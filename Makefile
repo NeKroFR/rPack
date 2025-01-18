@@ -21,6 +21,7 @@ $(OUTPUT): $(SRC_FILES)
 # Clean the build artifacts
 clean:
 	rm -f $(OUTPUT)
+	rm -f tests/*.elf
 
 # Run the compiled binary
 run: $(OUTPUT)
@@ -35,4 +36,3 @@ lint:
 	cargo clippy --all-targets --all-features
 
 .PHONY: all clean run fmt lint
-
