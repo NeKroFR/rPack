@@ -362,11 +362,12 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt() {
-        let key = b"Meow Meow Meow!";
+        let key = b"Meow Meow Meow! ";
         let aes = AES128::new(key);
         let plaintext = [b'A'; 16];
         let ciphertext = encrypt_aes128(&aes, &plaintext);
         let decrypted = decrypt_aes128(&aes, &ciphertext);
         assert_eq!(plaintext.to_vec(), decrypted);
     }
+
 }
