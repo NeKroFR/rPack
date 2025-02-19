@@ -1,6 +1,7 @@
 mod decrypt;
 mod encrypt;
 mod lattice;
+mod create_wb;
 
 use crate::lattice::NTRUVector;
 use numpy::ndarray::Array1;
@@ -33,6 +34,8 @@ fn load_public_key() -> serde_json::Result<(NTRUVector, NTRUVector, usize, i64)>
 }
 
 fn main() -> Result<()> {
+    create_wb::create_wb();
+
     let message_to_encrypt = "MEOW MEOW MEOW!!";
     println!("Message to encrypt: {}", message_to_encrypt);
 

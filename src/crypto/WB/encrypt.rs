@@ -1,4 +1,4 @@
-use crate::lattice::{Array1i64, NTRUVector};
+use crate::crypto::WB::lattice::{Array1i64, NTRUVector};
 use rand::prelude::*;
 use serde::Deserialize;
 

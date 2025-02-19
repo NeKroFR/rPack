@@ -364,18 +364,18 @@ fn main() -> Result<(), String> {
 */
 
 /* TEST WHITEBOX - CREATION DOES NOT WORK THO */
-mod decrypt;
-mod encrypt;
-mod lattice;
+mod crypto;
 
-use crate::lattice::NTRUVector;
+use crate::crypto::WB::lattice::NTRUVector;
+use crate::crypto::WB::decrypt::decrypt_json;
+use crate::crypto::WB::create_wb;
+use crate::crypto::WB::encrypt;
 use numpy::ndarray::Array1;
 use numpy::ndarray::s;
 use serde_json::json;
 use serde_json::Result;
 use std::fs::File;
 
-use decrypt::decrypt_json;
 fn load_public_key() -> serde_json::Result<(NTRUVector, NTRUVector, usize, i64)> {
     let pub_enc_data_file = File::open("pub_enc_data.json").map_err(serde_json::Error::io)?;
     let data: encrypt::PubEncData = serde_json::from_reader(pub_enc_data_file)?;
@@ -399,6 +399,8 @@ fn load_public_key() -> serde_json::Result<(NTRUVector, NTRUVector, usize, i64)>
 }
 
 fn main() -> Result<()> {
+    create_wb::create_wb();
+
     let message_to_encrypt = "MEOW MEOW MEOW!!";
     println!("Message to encrypt: {}", message_to_encrypt);
 
