@@ -9,13 +9,13 @@ pub struct LZ77Token {
 
 /// Compresses input data using LZ77 and outputs binary tokens
 pub fn lz77_compress(input: &[u8], window_size: usize) -> Vec<LZ77Token> {
-    let mut tokens = Vec::new();
+    let mut tokens: Vec<LZ77Token> = Vec::new();
     let mut pos = 0;
 
     while pos < input.len() {
         let mut best_match = (0, 0); // (offset, length)
-        
-        // Search for the longest match within the sliding window
+
+        // Find longest possible match in sliding window
         for back in 1..=usize::min(pos, window_size) {
             let mut length = 0;
             while length < 255 &&
@@ -36,7 +36,18 @@ pub fn lz77_compress(input: &[u8], window_size: usize) -> Vec<LZ77Token> {
             0 // End of input
         };
 
+        // Eliminate redundant tokens 
+        if let Some(last_token) = tokens.last_mut() {
+            if last_token.offset == offset as u16 && last_token.length + 1 == length as u8 {
+                last_token.length += 1;
+                pos += length + 1;
+                continue;
+            }
+        }
+
+        // Add optimized token to output
         tokens.push(LZ77Token { offset: offset as u16, length: length as u8, next_byte });
+
         pos += length + 1;
     }
 
@@ -48,10 +59,17 @@ pub fn lz77_decompress(tokens: &[LZ77Token]) -> Vec<u8> {
     let mut output = Vec::new();
 
     for token in tokens {
-        let start = output.len().saturating_sub(token.offset as usize);
-        for i in 0..token.length {
-            output.push(output[start + i as usize]);
+        if token.offset > 0 {
+            let start = output.len().saturating_sub(token.offset as usize);
+
+            // Copy referenced bytes dynamically (handling overlapping cases)
+            for i in 0..token.length {
+                let copied_byte = output.get(start + i as usize).copied().unwrap_or(0);
+                output.push(copied_byte);
+            }
         }
+
+        // Append next unmatched byte
         output.push(token.next_byte);
     }
 
@@ -82,7 +100,6 @@ pub fn read_compressed_data<R: Read>(reader: &mut R) -> io::Result<Vec<LZ77Token
 
     Ok(tokens)
 }
-
 
 #[cfg(test)]
 mod tests {

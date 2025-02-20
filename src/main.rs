@@ -340,6 +340,7 @@ fn main() {
 */
 /* TESTING WHITEBOX */
 pub mod crypto;
+pub mod compress;
 
 use std::time::Instant;
 use crypto::WB::create_wb::write_data;
