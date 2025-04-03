@@ -1,2 +1,2 @@
 [workspace]
-members = ["rpack", "stub"]
+members = ["rpack", "stub", "aes"]
