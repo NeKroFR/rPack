@@ -1,7 +1,5 @@
-**MERGE:**
-  - wb
+- Merge whitebox
+- add more timecheck and make the code looks better (maybe)
 
-**SOUTENANCE:**
-  - prctl
-  - ptrace
-  - timecheck
+- obfuscate syscall (eBPF)
+- add checksums
