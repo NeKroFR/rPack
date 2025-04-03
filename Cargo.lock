@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "aes"
+version = "0.1.0"
+dependencies = [
+ "rand",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -95,6 +102,7 @@ dependencies = [
 name = "rpack"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "lz4_flex",
  "rand",
 ]
@@ -109,6 +117,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "stub"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "libc",
  "lz4_flex",
 ]
