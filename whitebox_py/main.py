@@ -40,7 +40,11 @@ def main():
     print(f"Message: {message}")
     
     # encrypt using the whitebox
-    pka, pkb, degree, modulus = load_public_key()
+    try:
+        pka, pkb, degree, modulus = load_public_key()
+    except FileNotFoundError:
+        print("run create_WB.py first to generate the whitebox parameters.")
+        exit(1)
     message_bits = np.array([int(b) for byte in message for b in f"{byte:08b}"])
     if len(message_bits) > degree:
         print("Error: Message too long for encryption.")
