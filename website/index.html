@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Drag & Drop Packaging</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Uploader votre fichier exécutable</h1>
+    <div id="drop-zone" class="drop-zone">
+      <p>Glissez-déposez votre fichier ici</p>
+      <p>ou cliquez pour sélectionner</p>
+      <input type="file" id="file-input" class="file-input">
+    </div>
+    <div id="feedback" class="feedback"></div>
+    <!-- Bouton pour lancer le traitement, désactivé par défaut -->
+    <button id="process-btn" disabled>Traiter le fichier</button>
+    
+    <!-- Zone pour le fichier packé -->
+    <div id="packed-file-section" class="packed-file-section" style="display:none;">
+      <h2>Fichier packé</h2>
+      <a id="download-link" href="#" download></a>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const dropZone = document.getElementById('drop-zone');
+      const fileInput = document.getElementById('file-input');
+      const feedback = document.getElementById('feedback');
+      const processBtn = document.getElementById('process-btn');
+      const packedSection = document.getElementById('packed-file-section');
+      const downloadLink = document.getElementById('download-link');
+      
+      let selectedFile = null;
+      
+      console.log("DOM entièrement chargé");
+
+      // Affichage du fichier sélectionné
+      function handleFile(file) {
+        console.log("Fichier reçu:", file);
+        selectedFile = file;
+        feedback.textContent = `Fichier sélectionné : ${file.name}`;
+        processBtn.disabled = false;
+      }
+
+      // Déclenche le clic sur l'input lors d'un clic sur la zone
+      dropZone.addEventListener('click', () => {
+        fileInput.click();
+      });
+
+      // Gestion de la sélection via l'explorateur
+      fileInput.addEventListener('change', (e) => {
+        if(e.target.files && e.target.files.length > 0) {
+          handleFile(e.target.files[0]);
+        }
+      });
+
+      // Gestion des événements drag & drop pour éviter le comportement par défaut
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }, false);
+      });
+
+      // Ajout/suppression de la classe highlight pour l'effet visuel
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.add('highlight'), false);
+      });
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.remove('highlight'), false);
+      });
+
+      // Gestion du drop
+      dropZone.addEventListener('drop', (e) => {
+        if(e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      // Traitement du fichier lors du clic sur le bouton
+      processBtn.addEventListener('click', () => {
+        if(selectedFile) {
+          feedback.textContent = `Traitement en cours pour : ${selectedFile.name}`;
+          processBtn.disabled = true;
+          
+          // Préparation de l'envoi du fichier au serveur
+          const formData = new FormData();
+          formData.append('file', selectedFile);
+          
+          // Envoi vers l'endpoint '/process' qui exécutera ./rPack {nom_fichier}
+          fetch('/process', {
+            method: 'POST',
+            body: formData
+          })
+          .then(response => {
+            if(!response.ok) {
+                throw new Error("Erreur lors du traitement");
+            }
+            return response.blob();
+          })
+          .then(blob => {
+            // Création d'une URL pour le fichier packé reçu
+            const url = URL.createObjectURL(blob);
+            // Renommage en ajoutant l'extension .packed
+            const newFileName = `${selectedFile.name}.packed`;
+            downloadLink.href = url;
+            downloadLink.download = newFileName;
+            downloadLink.textContent = newFileName;
+            feedback.textContent = `Traitement terminé pour : ${selectedFile.name}`;
+            packedSection.style.display = 'block';
+          })
+          .catch(error => {
+            console.error(error);
+              feedback.textContent = `Erreur lors du traitement du fichier :  ${error}`;
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
+
