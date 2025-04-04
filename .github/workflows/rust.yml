@@ -21,4 +21,4 @@ jobs:
       with:
         name: upload only rPack
         path: |
-          ../target/debug/rpack
+          target/debug/rpack
