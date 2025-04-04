@@ -5,11 +5,11 @@
 # file with configuration.  For more information, see:
 # https://github.com/actions/labeler
 
-name: Coloumns count
+name: Columns count
 on: [push]
 
 jobs:
-  label:
+  columns-count:
 
     runs-on: ubuntu-latest
     permissions: write-all
