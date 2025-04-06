@@ -3,19 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>rPack Tool</title>
+  <title>rPack Portal</title>
   <link rel="stylesheet" href="style.css">
+  <!-- Google Font Roboto -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <!-- Navigation -->
   <header class="navbar">
-    <div class="nav-container">
+    <div class="container">
       <a class="logo" href="/">rPack</a>
       <nav>
         <ul>
           <li><a href="/downloads/reports.zip" download>Reports</a></li>
           <li><a href="https://docs.rpack.napo280.fr">Wiki</a></li>
-          <li><a href="/tool">Tool</a></li>
+          <li><a href="/">Home</a></li>
         </ul>
       </nav>
     </div>
@@ -23,23 +25,23 @@
 
   <!-- Main Content -->
   <main class="main-content">
-    <div class="container">
-      <h1>Uploader votre fichier exécutable</h1>
-      <div id="drop-zone" class="drop-zone">
-        <p>Glissez-déposez votre fichier ici</p>
-        <p>ou cliquez pour sélectionner</p>
-        <input type="file" id="file-input" class="file-input">
+    <!-- Upload Section -->
+    <section class="upload">
+      <div class="container upload-content">
+        <h1>Uploader votre fichier exécutable</h1>
+        <div id="drop-zone" class="drop-zone">
+          <p>Glissez-déposez votre fichier ici</p>
+          <p>ou cliquez pour sélectionner</p>
+          <input type="file" id="file-input" class="file-input">
+        </div>
+        <div id="feedback" class="feedback"></div>
+        <button id="process-btn" disabled>Traiter le fichier</button>
+        <div id="packed-file-section" class="packed-file-section" style="display:none;">
+          <h2>Fichier packé</h2>
+          <a id="download-link" href="#" download></a>
+        </div>
       </div>
-      <div id="feedback" class="feedback"></div>
-      <!-- Bouton pour lancer le traitement, désactivé par défaut -->
-      <button id="process-btn" disabled>Traiter le fichier</button>
-
-      <!-- Zone pour le fichier packé -->
-      <div id="packed-file-section" class="packed-file-section" style="display:none;">
-        <h2>Fichier packé</h2>
-        <a id="download-link" href="#" download></a>
-      </div>
-    </div>
+    </section>
   </main>
 
   <!-- Footer -->
@@ -70,65 +72,57 @@
         processBtn.disabled = false;
       }
 
-      // Déclenche le clic sur l'input lors d'un clic sur la zone
       dropZone.addEventListener('click', () => {
         fileInput.click();
       });
 
-      // Gestion de la sélection via l'explorateur
       fileInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files.length > 0) {
           handleFile(e.target.files[0]);
         }
       });
 
-      // Gestion des événements drag & drop pour éviter le comportement par défaut
+      // Empêche le comportement par défaut du drag & drop
       ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, (e) => {
           e.preventDefault();
           e.stopPropagation();
         }, false);
       });
-      // Ajout/suppression de la classe highlight pour l'effet visuel
+      // Ajout/suppression de la classe highlight
       ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => dropZone.classList.add('highlight'), false);
       });
       ['dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => dropZone.classList.remove('highlight'), false);
       });
-      // Gestion du drop
+
       dropZone.addEventListener('drop', (e) => {
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
           handleFile(e.dataTransfer.files[0]);
         }
       });
 
-      // Traitement du fichier lors du clic sur le bouton
       processBtn.addEventListener('click', () => {
         if(selectedFile) {
           feedback.textContent = `Traitement en cours pour : ${selectedFile.name}`;
           processBtn.disabled = true;
-
-          // Préparation de l'envoi du fichier au serveur
           const formData = new FormData();
           formData.append('file', selectedFile);
 
-          // Envoi vers l'endpoint '/process'
           fetch('https://rpack.napo280.fr/process', {
             method: 'POST',
             body: formData
           })
           .then(response => {
             if(!response.ok) {
-                throw new Error("Erreur lors du traitement, code: " + response.status);
+              throw new Error("Erreur lors du traitement, code: " + response.status);
             }
             return response.blob();
           })
           .then(blob => {
             console.log("Blob reçu:", blob);
-            // Création d'une URL pour le fichier packé reçu
             const url = URL.createObjectURL(blob);
-            // Renommage en ajoutant l'extension .packed
             const newFileName = `${selectedFile.name}.packed`;
             downloadLink.href = url;
             downloadLink.download = newFileName;
