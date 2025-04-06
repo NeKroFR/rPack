@@ -1,35 +1,101 @@
+/* Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 /* Global Styles */
 body {
-  font-family: Arial, sans-serif;
-  background: #f4f4f4;
-  margin: 0;
-  /* If you want a full-page centered container, keep these, otherwise remove them */
+  font-family: 'Roboto', sans-serif;
+  line-height: 1.6;
+  background: #f2f2f2;
+  color: #333;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  margin: 0;
 }
 
-/* Container for main content */
+/* Main Content */
+.main-content {
+  flex: 1;
+  padding-top: 100px;   /* pour éviter la navbar fixe */
+  padding-bottom: 60px; /* pour laisser de l'espace avant le footer */
+}
+
+/* Container */
 .container {
+  width: 90%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Navigation */
+.navbar {
+  background: rgba(0, 0, 0, 0.8);
+  padding: 1rem 0;
+  position: fixed;
+  width: 100%;
+  top: 0;
+  z-index: 100;
+}
+
+.navbar .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  color: #fff;
+  font-size: 1.8rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.navbar nav ul {
+  list-style: none;
+  display: flex;
+  gap: 1.5rem;
+}
+
+.navbar nav ul li a {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.3s ease;
+}
+
+.navbar nav ul li a:hover {
+  color: #ffd700;
+}
+
+/* Upload Section */
+.upload {
+  background: linear-gradient(135deg, #6a11cb, #2575fc);
+  padding: 100px 0;
   text-align: center;
+  margin-top: 70px; /* pour éviter de chevaucher la navbar fixe */
+}
+
+.upload .container {
   background: #fff;
   padding: 2rem;
   border-radius: 8px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-  position: relative;
-  width: 90%;
-  max-width: 500px;
-  margin: 5rem auto; /* added margin so content isn't hidden behind fixed header */
 }
 
-/* Drag and Drop Area */
+/* Drop Zone */
 .drop-zone {
   border: 2px dashed #bbb;
   border-radius: 8px;
   padding: 2rem;
   cursor: pointer;
   transition: background 0.3s ease;
-  margin-top: 1rem;
+  margin: 1rem auto;
+  width: 100%;
+  max-width: 500px;
   position: relative;
   overflow: hidden;
 }
@@ -81,6 +147,7 @@ button:not(:disabled):hover {
   background-color: #0056b3;
 }
 
+/* Packed File Section */
 .packed-file-section {
   margin-top: 2rem;
   border-top: 1px solid #ddd;
@@ -106,69 +173,11 @@ button:not(:disabled):hover {
   background-color: #218838;
 }
 
-/* Navigation Bar */
-header.navbar {
-  width: 100%;
-  background-color: #333;
-  color: #fff;
-  padding: 1rem;
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 100;
-}
-
-header.navbar .nav-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-header.navbar .nav-container a.logo {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #fff;
-  text-decoration: none;
-}
-
-header.navbar nav ul {
-  list-style: none;
-  display: flex;
-  gap: 1rem;
-  margin: 0;
-  padding: 0;
-}
-
-header.navbar nav ul li a {
-  color: #fff;
-  text-decoration: none;
-  font-size: 1rem;
-  transition: color 0.3s ease;
-}
-
-header.navbar nav ul li a:hover {
-  color: #ffd700;
-}
-
 /* Footer */
 footer {
-  width: 100%;
-  background-color: #333;
+  background: #333;
   color: #fff;
-  padding: 1rem;
+  padding: 1.5rem 0;
   text-align: center;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  font-size: 0.9rem;
-}
-
-/* Ensure the main content doesn't overlap the fixed header/footer */
-.main-content {
-  flex: 1;
-  padding-top: 80px;  /* Adjust based on navbar height */
-  padding-bottom: 60px;  /* Adjust based on footer height */
 }
 
