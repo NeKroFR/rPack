@@ -92,7 +92,7 @@
           formData.append('file', selectedFile);
           
           // Envoi vers l'endpoint '/process' qui exécutera ./rPack {nom_fichier}
-          fetch('http://192.168.1.44:8080/process', {
+          fetch('https://rpack.napo280.fr/process', {
             method: 'POST',
             body: formData
           })
