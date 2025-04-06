@@ -7,23 +7,47 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Uploader votre fichier exécutable</h1>
-    <div id="drop-zone" class="drop-zone">
-      <p>Glissez-déposez votre fichier ici</p>
-      <p>ou cliquez pour sélectionner</p>
-      <input type="file" id="file-input" class="file-input">
+  <!-- Navigation -->
+  <header class="navbar">
+    <div class="nav-container">
+      <a class="logo" href="/">rPack</a>
+      <nav>
+        <ul>
+          <li><a href="/downloads/reports.zip" download>Reports</a></li>
+          <li><a href="https://docs.rpack.napo280.fr">Wiki</a></li>
+          <li><a href="/tool">Tool</a></li>
+        </ul>
+      </nav>
     </div>
-    <div id="feedback" class="feedback"></div>
-    <!-- Bouton pour lancer le traitement, désactivé par défaut -->
-    <button id="process-btn" disabled>Traiter le fichier</button>
-    
-    <!-- Zone pour le fichier packé -->
-    <div id="packed-file-section" class="packed-file-section" style="display:none;">
-      <h2>Fichier packé</h2>
-      <a id="download-link" href="#" download></a>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="container">
+      <h1>Uploader votre fichier exécutable</h1>
+      <div id="drop-zone" class="drop-zone">
+        <p>Glissez-déposez votre fichier ici</p>
+        <p>ou cliquez pour sélectionner</p>
+        <input type="file" id="file-input" class="file-input">
+      </div>
+      <div id="feedback" class="feedback"></div>
+      <!-- Bouton pour lancer le traitement, désactivé par défaut -->
+      <button id="process-btn" disabled>Traiter le fichier</button>
+
+      <!-- Zone pour le fichier packé -->
+      <div id="packed-file-section" class="packed-file-section" style="display:none;">
+        <h2>Fichier packé</h2>
+        <a id="download-link" href="#" download></a>
+      </div>
     </div>
-  </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p>&copy; 2025 rPack Portal. All rights reserved.</p>
+    </div>
+  </footer>
 
   <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -33,9 +57,9 @@
       const processBtn = document.getElementById('process-btn');
       const packedSection = document.getElementById('packed-file-section');
       const downloadLink = document.getElementById('download-link');
-      
+
       let selectedFile = null;
-      
+
       console.log("DOM entièrement chargé");
 
       // Affichage du fichier sélectionné
@@ -53,7 +77,7 @@
 
       // Gestion de la sélection via l'explorateur
       fileInput.addEventListener('change', (e) => {
-        if(e.target.files && e.target.files.length > 0) {
+        if (e.target.files && e.target.files.length > 0) {
           handleFile(e.target.files[0]);
         }
       });
@@ -65,7 +89,6 @@
           e.stopPropagation();
         }, false);
       });
-
       // Ajout/suppression de la classe highlight pour l'effet visuel
       ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => dropZone.classList.add('highlight'), false);
@@ -73,10 +96,9 @@
       ['dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => dropZone.classList.remove('highlight'), false);
       });
-
       // Gestion du drop
       dropZone.addEventListener('drop', (e) => {
-        if(e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
           handleFile(e.dataTransfer.files[0]);
         }
       });
@@ -86,23 +108,24 @@
         if(selectedFile) {
           feedback.textContent = `Traitement en cours pour : ${selectedFile.name}`;
           processBtn.disabled = true;
-          
+
           // Préparation de l'envoi du fichier au serveur
           const formData = new FormData();
           formData.append('file', selectedFile);
-          
-          // Envoi vers l'endpoint '/process' qui exécutera ./rPack {nom_fichier}
+
+          // Envoi vers l'endpoint '/process'
           fetch('https://rpack.napo280.fr/process', {
             method: 'POST',
             body: formData
           })
           .then(response => {
             if(!response.ok) {
-                throw new Error("Erreur lors du traitement");
+                throw new Error("Erreur lors du traitement, code: " + response.status);
             }
             return response.blob();
           })
           .then(blob => {
+            console.log("Blob reçu:", blob);
             // Création d'une URL pour le fichier packé reçu
             const url = URL.createObjectURL(blob);
             // Renommage en ajoutant l'extension .packed
@@ -115,7 +138,7 @@
           })
           .catch(error => {
             console.error(error);
-              feedback.textContent = `Erreur lors du traitement du fichier :  ${error}`;
+            feedback.textContent = `Erreur lors du traitement du fichier : ${error}`;
           });
         }
       });
