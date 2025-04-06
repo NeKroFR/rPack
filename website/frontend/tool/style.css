@@ -1,13 +1,15 @@
+/* Global Styles */
 body {
   font-family: Arial, sans-serif;
   background: #f4f4f4;
   margin: 0;
+  /* If you want a full-page centered container, keep these, otherwise remove them */
   display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
+/* Container for main content */
 .container {
   text-align: center;
   background: #fff;
@@ -17,8 +19,10 @@ body {
   position: relative;
   width: 90%;
   max-width: 500px;
+  margin: 5rem auto; /* added margin so content isn't hidden behind fixed header */
 }
 
+/* Drag and Drop Area */
 .drop-zone {
   border: 2px dashed #bbb;
   border-radius: 8px;
@@ -100,5 +104,71 @@ button:not(:disabled):hover {
 
 .packed-file-section a:hover {
   background-color: #218838;
+}
+
+/* Navigation Bar */
+header.navbar {
+  width: 100%;
+  background-color: #333;
+  color: #fff;
+  padding: 1rem;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+}
+
+header.navbar .nav-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+header.navbar .nav-container a.logo {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #fff;
+  text-decoration: none;
+}
+
+header.navbar nav ul {
+  list-style: none;
+  display: flex;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+}
+
+header.navbar nav ul li a {
+  color: #fff;
+  text-decoration: none;
+  font-size: 1rem;
+  transition: color 0.3s ease;
+}
+
+header.navbar nav ul li a:hover {
+  color: #ffd700;
+}
+
+/* Footer */
+footer {
+  width: 100%;
+  background-color: #333;
+  color: #fff;
+  padding: 1rem;
+  text-align: center;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  font-size: 0.9rem;
+}
+
+/* Ensure the main content doesn't overlap the fixed header/footer */
+.main-content {
+  flex: 1;
+  padding-top: 80px;  /* Adjust based on navbar height */
+  padding-bottom: 60px;  /* Adjust based on footer height */
 }
 
