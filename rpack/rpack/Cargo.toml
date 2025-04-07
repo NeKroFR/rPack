@@ -1,0 +1,12 @@
+[package]
+name = "rpack"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+lz4_flex = "0.11"
+rand = "0.8.5"
+aes = { path = "../aes" }
+
+[build-dependencies]
