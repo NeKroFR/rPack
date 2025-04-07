@@ -53,7 +53,7 @@ def process():
     print("Le fichier packé sera généré sous :", output_path)
 
     # Chemin vers l'exécutable rPack. Adapte-le selon ton environnement.
-    rpack_path = "../../target/debug/rpack"
+    rpack_path = "../../rpack/target/debug/rpack"
     print("Tentative d'exécution de rPack :")
     print("Commande :", rpack_path, input_path, output_path)
 
