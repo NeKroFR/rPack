@@ -9,7 +9,9 @@ jobs:
   build-and-upload:
 
     runs-on: ubuntu-latest
-
+    defaults:
+        run:
+            working-directory: ./rpack
     steps:
     - uses: actions/checkout@v4
     - name: test cd
