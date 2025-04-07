@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: test cd
+      run: cd rpack
     - uses: actions/checkout@v4
     - name: Build
       run: cargo build --verbose
@@ -21,4 +23,4 @@ jobs:
       with:
         name: rpack
         path: |
-          target/debug/rpack
+          rpack/target/debug/rpack
