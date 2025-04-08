@@ -28,16 +28,16 @@
     <!-- Upload Section -->
     <section class="upload">
       <div class="container upload-content">
-        <h1>Uploader votre fichier exécutable</h1>
+        <h1>Uploader ELF executable</h1>
         <div id="drop-zone" class="drop-zone">
-          <p>Glissez-déposez votre fichier ici</p>
-          <p>ou cliquez pour sélectionner</p>
+          <p>Drga and drop your file here</p>
+          <p>or click to select one</p>
           <input type="file" id="file-input" class="file-input">
         </div>
         <div id="feedback" class="feedback"></div>
-        <button id="process-btn" disabled>Traiter le fichier</button>
+        <button id="process-btn" disabled>Pack file</button>
         <div id="packed-file-section" class="packed-file-section" style="display:none;">
-          <h2>Fichier packé</h2>
+          <h2>Packed file !</h2>
           <a id="download-link" href="#" download></a>
         </div>
       </div>
@@ -110,7 +110,7 @@
           const formData = new FormData();
           formData.append('file', selectedFile);
 
-          fetch('https://rpack.napo280.fr/process', {
+          fetch('https://rpack.la-banquise.fr/process', {
             method: 'POST',
             body: formData
           })
