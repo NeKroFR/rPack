@@ -391,19 +391,17 @@ struct PubEncData {
     pkb: Vec<i64>,
 }
 
-fn load_data(dir: &str) -> Result<(PubEncData, WhiteData, CipherData), serde_json::Error> {
-    let pub_enc_data_file = File::open(format!("{}/pub_enc_data.json", dir))
-        .map_err(serde_json::Error::io)?;
-    let wb_dec_data_file = File::open(format!("{}/wb_dec_data.json", dir))
-        .map_err(serde_json::Error::io)?;
-    let ciphertext_file = File::open(format!("{}/ciphertext.json", dir))
-        .map_err(serde_json::Error::io)?;
+
+fn load_data() -> Result<(PubEncData, WhiteData, CipherData), serde_json::Error> {
+    let pub_enc_data_file = File::open("pub_enc_data.json").map_err(serde_json::Error::io)?;
+    let wb_dec_data_file = File::open("wb_dec_data.json").map_err(serde_json::Error::io)?;
+    let ciphertext_file = File::open("ciphertext.json").map_err(serde_json::Error::io)?;
 
     let pub_enc_data: PubEncData = serde_json::from_reader(pub_enc_data_file)?;
     let white_data: WhiteData = serde_json::from_reader(wb_dec_data_file)?;
     let ciphertext: CipherData = serde_json::from_reader(ciphertext_file)?;
 
-    println!("WB_vector.white data loaded successfully from {}.", dir);
+    println!("WB_vector.white data loaded successfully.");
     Ok((pub_enc_data, white_data, ciphertext))
 }
 
@@ -463,9 +461,10 @@ fn binary_to_text(binary_str: String) -> String {
     ascii_chars.into_iter().collect()
 }
 
-pub fn decrypt_json(dir: &str) -> serde_json::Result<()> {
-    println!("Loading data from {}...", dir);
-    let (data, white_data, ciphertext) = load_data(dir)?;
+
+pub fn decrypt_json() -> serde_json::Result<()> {
+    println!("Loading data...");
+    let (data, white_data, ciphertext) = load_data()?;
 
     println!("Decrypting message...");
     let decrypted_message = decrypt_message(&data, &white_data, &ciphertext);
