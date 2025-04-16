@@ -21,6 +21,11 @@ fn main() {
     let mut input_data = Vec::new();
     input_file.read_to_end(&mut input_data).expect("Failed to read input binary");
 
+    if input_data.len() < 4 || &input_data[0..4] != b"\x7FELF" {
+        eprintln!("Error: Input file is not a valid ELF binary");
+        std::process::exit(1);
+    }
+
     println!("[*] Generating AES key...");
     let key = AES128::generate_key();
     let aes = AES128::new(&key);
