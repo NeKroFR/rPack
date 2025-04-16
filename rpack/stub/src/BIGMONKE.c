@@ -13,7 +13,7 @@ $ tigress  --Environment=x86_64:Linux:Gcc:4.6 \
 */
 
 #include <stdio.h>
-// Tiger dependencies
+// Tigress dependencies
 #include<time.h>
 #include<stdlib.h>
 
