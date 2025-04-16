@@ -13,12 +13,13 @@ $ tigress  --Environment=x86_64:Linux:Gcc:4.6 \
 */
 
 #include <stdio.h>
+#include <sys/prctl.h>
 // Tigress dependencies
 #include<time.h>
 #include<stdlib.h>
 
-
 int main() {
+    prctl(PR_SET_DUMPABLE, 0);
     const char bigMonke[] = 
         "            ,.-\" \"-.,\n"
         "           /   ===   \\\n"
