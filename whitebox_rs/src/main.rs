@@ -74,7 +74,6 @@ fn main() -> Result<()> {
     // --- Decryption Section ---
     println!("\n---Decryption---");
     decrypt_json()?;
-    Ok(())/*
     // -- Remove generated json files --
     println!("\n---Cleaning---");
     std::fs::remove_file("ciphertext.json").unwrap_or_else(|_| {
@@ -91,4 +90,4 @@ fn main() -> Result<()> {
     });
 
     Ok(())
-*/}
+}

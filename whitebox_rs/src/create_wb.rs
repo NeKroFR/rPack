@@ -32,14 +32,6 @@ impl NtruVector {
         res
     }
 
-    fn sub(&self, other: &NtruVector) -> NtruVector {
-        let mut res = NtruVector::new(self.degree, self.modulus, self.ntt);
-        for i in 0..self.degree {
-            res.vector[i] = (self.vector[i] - other.vector[i]).rem_euclid(self.modulus);
-        }
-        res
-    }
-
     fn mul(&self, other: &NtruVector) -> NtruVector {
         let mut res = NtruVector::new(self.degree, self.modulus, self.ntt);
         if self.ntt {
@@ -177,18 +169,6 @@ fn goto_crt(x: i64, base: &[i64]) -> Vec<i64> {
     base.iter().map(|&b| x.rem_euclid(b)).collect()
 }
 
-fn goback_crt(x_b: &[i64], base: &[i64]) -> i64 {
-    let B: i64 = base.iter().product();
-    let mut x = 0;
-    for i in 0..base.len() {
-        let B_i = B / base[i];
-        let (_, inv, _) = xgcd(B_i, base[i]);
-        let inv = inv.rem_euclid(base[i]);
-        x = (x + x_b[i] * B_i * inv).rem_euclid(B);
-    }
-    x
-}
-
 fn xgcd(b: i64, n: i64) -> (i64, i64, i64) {
     let mut x0 = 1;
     let mut x1 = 0;
@@ -251,20 +231,6 @@ fn encrypt(m: &[i64], pka: &NtruVector, pkb: &NtruVector, degree: usize, modulus
     (a1, a2)
 }
 
-fn decrypt(a1: &NtruVector, a2: &NtruVector, sk: &NtruVector, degree: usize, modulus: i64) -> Vec<i64> {
-    let tmp = a2.add(&a1.mul(sk));
-    let mut m = vec![0; degree];
-    for i in 0..degree {
-        let val = tmp.vector[i];
-        if val > modulus / 2 {
-            m[i] = 1 - (val % 2);
-        } else {
-            m[i] = val % 2;
-        }
-    }
-    m
-}
-
 fn print_progress(m: usize, n: usize, step: usize) {
     if m % step == 0 {
         println!("{:.1}%", m as f64 * 100.0 / n as f64);
@@ -280,10 +246,10 @@ fn prepare_first_box_mm3(sk: &NtruVector, a1_r: &NtruVector, a2_r: &NtruVector, 
     mask.goto_ntt(root);
     tmp_sk.goto_ntt(root);
     tmp_sz.goto_ntt(root);
-    let M: i64 = beta.iter().product();
-    let N = tmp_sk.modulus;
-    let (_, Ninv, _) = xgcd(N, M);
-    let Ninv_M = goto_crt(Ninv, beta);
+    let m: i64 = beta.iter().product();
+    let n = tmp_sk.modulus;
+    let (_, n_inv, _) = xgcd(n, m);
+    let n_inv_m = goto_crt(n_inv, beta);
     let mut fb = HashMap::new();
     for dim in 0..tmp_sk.degree {
         print_progress(dim, tmp_sk.degree, 64);
@@ -292,16 +258,16 @@ fn prepare_first_box_mm3(sk: &NtruVector, a1_r: &NtruVector, a2_r: &NtruVector, 
         let s = goto_crt(tmp_sk.vector[dim], beta);
         let _sz = goto_crt(tmp_sz.vector[dim], beta);
         let r = goto_crt(rot.vector[dim], beta);
-        let m = goto_crt(mask.vector[dim], beta);
+        let mask_crt = goto_crt(mask.vector[dim], beta);
         for j in 0..32 {
             let a = goto_crt(j as i64, beta);
             for l in 0..32 {
                 let b = goto_crt(l as i64, beta);
                 let mut val = 0;
                 for i in 0..k {
-                    let part = (a[i] * s[i] + b[i] * r[i] + r[i] * m[i]).rem_euclid(beta[i]);
-                    let neg_ninv = (-Ninv_M[i]).rem_euclid(beta[i]);
-                    val += (part * neg_ninv).rem_euclid(beta[i]) << (5 * i);
+                    let part = (a[i] * s[i] + b[i] * r[i] + r[i] * mask_crt[i]).rem_euclid(beta[i]);
+                    let neg_n_inv_m = (-n_inv_m[i]).rem_euclid(beta[i]);
+                    val += (part * neg_n_inv_m).rem_euclid(beta[i]) << (5 * i);
                 }
                 table[j][l] = val;
             }
@@ -321,10 +287,10 @@ fn prepare_second_box_mm3(sk: &NtruVector, a1_r: &NtruVector, a2_r: &NtruVector,
     mask.goto_ntt(root);
     tmp_sk.goto_ntt(root);
     tmp_sz.goto_ntt(root);
-    let M: i64 = beta.iter().product();
-    let M_p: i64 = beta_p.iter().product();
-    let (_, Minv, _) = xgcd(M, M_p);
-    let Minv_M_p = goto_crt(Minv, beta_p);
+    let m: i64 = beta.iter().product();
+    let m_p: i64 = beta_p.iter().product();
+    let (_, m_inv, _) = xgcd(m, m_p);
+    let m_inv_m_p = goto_crt(m_inv, beta_p);
     let mut sb = HashMap::new();
     for dim in 0..tmp_sk.degree {
         print_progress(dim, tmp_sk.degree, 64);
@@ -333,15 +299,15 @@ fn prepare_second_box_mm3(sk: &NtruVector, a1_r: &NtruVector, a2_r: &NtruVector,
         let s = goto_crt(tmp_sk.vector[dim], beta_p);
         let _sz = goto_crt(tmp_sz.vector[dim], beta_p);
         let r = goto_crt(rot.vector[dim], beta_p);
-        let m = goto_crt(mask.vector[dim], beta_p);
+        let mask_crt = goto_crt(mask.vector[dim], beta_p);
         for j in 0..32 {
             let a = goto_crt(j as i64, beta_p);
             for l in 0..32 {
                 let b = goto_crt(l as i64, beta_p);
                 let mut val = 0;
                 for i in 0..k {
-                    let part = (a[i] * s[i] + b[i] * r[i] + r[i] * m[i]).rem_euclid(beta_p[i]);
-                    val += (part * Minv_M_p[i]).rem_euclid(beta_p[i]) << (5 * i);
+                    let part = (a[i] * s[i] + b[i] * r[i] + r[i] * mask_crt[i]).rem_euclid(beta_p[i]);
+                    val += (part * m_inv_m_p[i]).rem_euclid(beta_p[i]) << (5 * i);
                 }
                 table[j][l] = val;
             }
@@ -361,10 +327,10 @@ fn prepare_first_box_mm2(sk: &NtruVector, a1_o: &NtruVector, a2_o: &NtruVector, 
     zero.goto_ntt(root);
     tmp_sk.goto_ntt(root);
     tmp_sz.goto_ntt(root);
-    let M: i64 = beta.iter().product();
-    let N = tmp_sk.modulus;
-    let (_, Ninv, _) = xgcd(N, M);
-    let Ninv_M = goto_crt(Ninv, beta);
+    let m: i64 = beta.iter().product();
+    let n = tmp_sk.modulus;
+    let (_, n_inv, _) = xgcd(n, m);
+    let n_inv_m = goto_crt(n_inv, beta);
     let mut fb = HashMap::new();
     for dim in 0..tmp_sk.degree {
         print_progress(dim, tmp_sk.degree, 64);
@@ -381,8 +347,8 @@ fn prepare_first_box_mm2(sk: &NtruVector, a1_o: &NtruVector, a2_o: &NtruVector, 
                 let mut val = 0;
                 for i in 0..k {
                     let part = (a[i] * s[i] + b[i] * o[i] + a[i] * _sz[i] + b[i] * z[i]).rem_euclid(beta[i]);
-                    let neg_ninv = (-Ninv_M[i]).rem_euclid(beta[i]);
-                    val += (part * neg_ninv).rem_euclid(beta[i]) << (5 * i);
+                    let neg_n_inv_m = (-n_inv_m[i]).rem_euclid(beta[i]);
+                    val += (part * neg_n_inv_m).rem_euclid(beta[i]) << (5 * i);
                 }
                 table[j][l] = val;
             }
@@ -402,10 +368,10 @@ fn prepare_second_box_mm2(sk: &NtruVector, a1_o: &NtruVector, a2_o: &NtruVector,
     zero.goto_ntt(root);
     tmp_sk.goto_ntt(root);
     tmp_sz.goto_ntt(root);
-    let M: i64 = beta.iter().product();
-    let M_p: i64 = beta_p.iter().product();
-    let (_, Minv, _) = xgcd(M, M_p);
-    let Minv_M_p = goto_crt(Minv, beta_p);
+    let m: i64 = beta.iter().product();
+    let m_p: i64 = beta_p.iter().product();
+    let (_, m_inv, _) = xgcd(m, m_p);
+    let m_inv_m_p = goto_crt(m_inv, beta_p);
     let mut sb = HashMap::new();
     for dim in 0..tmp_sk.degree {
         print_progress(dim, tmp_sk.degree, 64);
@@ -422,7 +388,7 @@ fn prepare_second_box_mm2(sk: &NtruVector, a1_o: &NtruVector, a2_o: &NtruVector,
                 let mut val = 0;
                 for i in 0..k {
                     let part = (a[i] * s[i] + b[i] * o[i] + a[i] * _sz[i] + b[i] * z[i]).rem_euclid(beta_p[i]);
-                    val += (part * Minv_M_p[i]).rem_euclid(beta_p[i]) << (5 * i);
+                    val += (part * m_inv_m_p[i]).rem_euclid(beta_p[i]) << (5 * i);
                 }
                 table[j][l] = val;
             }
@@ -435,10 +401,10 @@ fn prepare_second_box_mm2(sk: &NtruVector, a1_o: &NtruVector, a2_o: &NtruVector,
 
 fn prepare_first_box_mm(sk: &mut NtruVector, root: i64, _unroot: i64, _ninv: i64, beta: &[i64], k: usize) -> HashMap<String, Vec<Vec<i64>>> {
     sk.goto_ntt(root);
-    let M: i64 = beta.iter().product();
-    let N = sk.modulus;
-    let (_, Ninv, _) = xgcd(N, M);
-    let Ninv_M = goto_crt(Ninv, beta);
+    let m: i64 = beta.iter().product();
+    let n = sk.modulus;
+    let (_, n_inv, _) = xgcd(n, m);
+    let n_inv_m = goto_crt(n_inv, beta);
     let mut fb = HashMap::new();
     for dim in 0..sk.degree {
         print_progress(dim, sk.degree, 64);
@@ -452,8 +418,8 @@ fn prepare_first_box_mm(sk: &mut NtruVector, root: i64, _unroot: i64, _ninv: i64
                 let mut val = 0;
                 for i in 0..k {
                     let part = (a[i] * s[i] + b[i]).rem_euclid(beta[i]);
-                    let neg_ninv = (-Ninv_M[i]).rem_euclid(beta[i]);
-                    val += (part * neg_ninv).rem_euclid(beta[i]) << (5 * i);
+                    let neg_n_inv_m = (-n_inv_m[i]).rem_euclid(beta[i]);
+                    val += (part * neg_n_inv_m).rem_euclid(beta[i]) << (5 * i);
                 }
                 table[j][l] = val;
             }
@@ -467,10 +433,10 @@ fn prepare_first_box_mm(sk: &mut NtruVector, root: i64, _unroot: i64, _ninv: i64
 
 fn prepare_second_box_mm(sk: &mut NtruVector, root: i64, _unroot: i64, _ninv: i64, beta: &[i64], beta_p: &[i64], k: usize) -> HashMap<String, Vec<Vec<i64>>> {
     sk.goto_ntt(root);
-    let M: i64 = beta.iter().product();
-    let M_p: i64 = beta_p.iter().product();
-    let (_, Minv, _) = xgcd(M, M_p);
-    let Minv_M_p = goto_crt(Minv, beta_p);
+    let m: i64 = beta.iter().product();
+    let m_p: i64 = beta_p.iter().product();
+    let (_, m_inv, _) = xgcd(m, m_p);
+    let m_inv_m_p = goto_crt(m_inv, beta_p);
     let mut sb = HashMap::new();
     for dim in 0..sk.degree {
         print_progress(dim, sk.degree, 64);
@@ -484,7 +450,7 @@ fn prepare_second_box_mm(sk: &mut NtruVector, root: i64, _unroot: i64, _ninv: i6
                 let mut val = 0;
                 for i in 0..k {
                     let part = (a[i] * s[i] + b[i]).rem_euclid(beta_p[i]);
-                    val += (part * Minv_M_p[i]).rem_euclid(beta_p[i]) << (5 * i);
+                    val += (part * m_inv_m_p[i]).rem_euclid(beta_p[i]) << (5 * i);
                 }
                 table[j][l] = val;
             }
@@ -609,7 +575,7 @@ fn write_data(degree: usize, modulus: i64, beta: &[i64], beta_p: &[i64], k: usiz
             let fb = prepare_first_box_mm(&mut sk.clone(), root, unroot, ninv, beta, k);
             println!("prepare_second_box_MM");
             let sb = prepare_second_box_mm(&mut sk.clone(), root, unroot, ninv, beta, beta_p, k);
-            let mut obj = wb_dec_data.as_object_mut().unwrap();
+            let obj = wb_dec_data.as_object_mut().unwrap();
             for (key, value) in fb {
                 obj.insert(key, serde_json::to_value(value).unwrap());
             }
@@ -622,7 +588,7 @@ fn write_data(degree: usize, modulus: i64, beta: &[i64], beta_p: &[i64], k: usiz
             let fb = prepare_first_box_mm2(&sk, &a1_o, &a2_o, &a1_z, &a2_z, root, unroot, ninv, beta, k);
             println!("prepare_second_box_MM2");
             let sb = prepare_second_box_mm2(&sk, &a1_o, &a2_o, &a1_z, &a2_z, root, unroot, ninv, beta, beta_p, k);
-            let mut obj = wb_dec_data.as_object_mut().unwrap();
+            let obj = wb_dec_data.as_object_mut().unwrap();
             for (key, value) in fb {
                 obj.insert(key, serde_json::to_value(value).unwrap());
             }
@@ -635,7 +601,7 @@ fn write_data(degree: usize, modulus: i64, beta: &[i64], beta_p: &[i64], k: usiz
             let fb = prepare_first_box_mm3(&sk, &a1_rot, &a2_rot, &a1_ma, &a2_ma, root, unroot, ninv, beta, k);
             println!("prepare_second_box_MM3");
             let sb = prepare_second_box_mm3(&sk, &a1_rot, &a2_rot, &a1_ma, &a2_ma, root, unroot, ninv, beta, beta_p, k);
-            let mut obj = wb_dec_data.as_object_mut().unwrap();
+            let obj = wb_dec_data.as_object_mut().unwrap();
             for (key, value) in fb {
                 obj.insert(key, serde_json::to_value(value).unwrap());
             }
