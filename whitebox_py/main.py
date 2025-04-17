@@ -36,7 +36,7 @@ def load_public_key():
 
 
 def main():
-    message = 'Meow Meow Meow!!'.encode()
+    message = 'MEOW MEOW MEOW!!'.encode()
     print(f"Message: {message}")
     
     # encrypt using the whitebox

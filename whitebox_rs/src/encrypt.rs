@@ -1,5 +1,6 @@
 use crate::lattice::{Array1i64, NTRUVector};
 use rand::prelude::*;
+use rand_distr::Normal;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -10,17 +11,17 @@ pub struct PubEncData {
     pub pkb: Vec<i64>,
 }
 
-// takes message bits and encrypts
 pub fn encrypt_func(m_bits: &Array1i64, pka: &NTRUVector, pkb: &NTRUVector, degree: usize, modulus: i64) -> (NTRUVector, NTRUVector) {
     let mut rng = rand::thread_rng();
+    let normal = Normal::new(0.0, 1.0).unwrap();
     let mut u = NTRUVector::new(degree, modulus, false);
     let mut e1 = NTRUVector::new(degree, modulus, false);
     let mut e2 = NTRUVector::new(degree, modulus, false);
 
     for i in 0..degree {
-        u.vector[i] = rng.gen_range(-2..=2); // Simulate gaussian
-        e1.vector[i] = 2 * rng.gen_range(-2..=2); // Simulate 2 * gaussian
-        e2.vector[i] = 2 * rng.gen_range(-2..=2); // Simulate 2 * gaussian
+        u.vector[i] = normal.sample(&mut rng) as i64; // Gaussian with truncation towards zero
+        e1.vector[i] = 2 * (normal.sample(&mut rng) as i64); // 2 * Gaussian with truncation
+        e2.vector[i] = 2 * (normal.sample(&mut rng) as i64); // 2 * Gaussian with truncation
     }
 
     let mut m_ntru = NTRUVector::new(degree, modulus, false);
