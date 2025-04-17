@@ -5,6 +5,9 @@ use std::path::Path;
 use std::os::unix::fs::PermissionsExt;
 use lz4_flex::compress;
 use aes::AES128;
+use whitebox::{create_whitebox, encrypt_func};
+use ndarray::Array1;
+use bincode;
 
 const STUB_DATA: &[u8] = include_bytes!("../../target/stub.bin");
 
@@ -26,11 +29,30 @@ fn main() {
         std::process::exit(1);
     }
 
+    println!("[*] Generating white-box data...");
+    let (pub_enc_data, white_data) = create_whitebox();
+
     println!("[*] Generating AES key...");
-    let key = AES128::generate_key();
-    let aes = AES128::new(&key);
+    let aes_key = AES128::generate_key();
+
+
+    let aes_key_bits: Vec<i64> = aes_key.iter()
+        .flat_map(|&byte| (0..8).map(move |i| ((byte >> i) & 1) as i64))
+        .collect();
+    let mut message_padded = vec![0i64; pub_enc_data.degree];
+    message_padded[0..128].copy_from_slice(&aes_key_bits);
+    let message_array = Array1::from_vec(message_padded);
+
+    println!("[*] Encrypting AES key with white-box...");
+    let (a1, a2) = encrypt_func(&message_array, &pub_enc_data.pka, &pub_enc_data.pkb, pub_enc_data.degree, pub_enc_data.modulus);
+
+    // Serialize whitebox data and encrypted key
+    let serialized_white_data = bincode::serialize(&white_data).expect("Failed to serialize WhiteData");
+    let serialized_a1 = bincode::serialize(&a1).expect("Failed to serialize a1");
+    let serialized_a2 = bincode::serialize(&a2).expect("Failed to serialize a2");
 
     println!("[*] Compressing input binary...");
+    let aes = AES128::new(&aes_key);
     let compressed_data = compress(&input_data);
 
     println!("[*] Encrypting compressed data...");
@@ -40,25 +62,15 @@ fn main() {
     let decompressed_size = input_data.len() as u64;
 
     println!("[*] Generating the packed binary...");
-    let stub_bytes = STUB_DATA;
-    let placeholder = [
-        0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF,
-        0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF
-    ];
-    let positions: Vec<_> = stub_bytes.windows(16)
-        .enumerate()
-        .filter(|&(_, window)| window == placeholder)
-        .map(|(i, _)| i)
-        .collect();
-    if positions.len() != 1 {
-        panic!("Placeholder not found or found multiple times in stub binary");
-    }
-    let placeholder_pos = positions[0];
-    let mut packed_data = stub_bytes.to_vec();
-    packed_data[placeholder_pos..placeholder_pos + 16].copy_from_slice(&key);
-
+    let mut packed_data = STUB_DATA.to_vec();
     packed_data.extend_from_slice(&encrypted_data);
+    packed_data.extend_from_slice(&serialized_a1);
+    packed_data.extend_from_slice(&serialized_a2);
+    packed_data.extend_from_slice(&serialized_white_data);
     packed_data.extend_from_slice(&encrypted_size.to_le_bytes());
+    packed_data.extend_from_slice(&(serialized_a1.len() as u64).to_le_bytes());
+    packed_data.extend_from_slice(&(serialized_a2.len() as u64).to_le_bytes());
+    packed_data.extend_from_slice(&(serialized_white_data.len() as u64).to_le_bytes());
     packed_data.extend_from_slice(&decompressed_size.to_le_bytes());
 
     let mut output_file = File::create(output_path).expect("Failed to create output file");

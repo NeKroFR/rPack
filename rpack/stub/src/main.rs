@@ -8,12 +8,9 @@ use std::time::{Instant, Duration};
 use std::process;
 use lz4_flex::decompress;
 use aes::AES128;
-
-// Placeholder for the AES key
-const AES_KEY: [u8; 16] = [
-    0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF,
-    0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF
-];
+use whitebox::{decrypt_message, NTRUVector, WhiteData};
+use bincode;
+use serde::Deserialize;
 
 fn is_being_traced() -> bool {
     use std::fs::File;
@@ -41,7 +38,6 @@ fn is_being_traced() -> bool {
 }
 
 fn bait() {
-    // BigMONKE
     println!("{}", r#"
             ,.-" "-.,
            /   ===   \
@@ -69,9 +65,6 @@ macro_rules! is_traced {
     };
 }
 
-// Time check  (also call the is_traced macro so we also check for debuggers)
-// No arguments -> check if the time since the last call is greater than 100ms
-// 2 arguments (beg, delay) -> check if the time since beg is greater than delay
 macro_rules! timecheck {
     () => {
         is_traced!();
@@ -91,7 +84,6 @@ macro_rules! timecheck {
 
 fn main() {    
     timecheck!();
-    // Make the process undumpable
     unsafe {
         if prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) == -1 {
             eprintln!("Failed to disable PR_SET_DUMPABLE");
@@ -108,33 +100,65 @@ fn main() {
 
     let total_size = file.metadata().expect("Failed to get file metadata").len();
 
-    // Read decompressed size (last 8 bytes)
-    file.seek(SeekFrom::Start(total_size - 8)).expect("Failed to seek");
-    let mut size_bytes = [0u8; 8];
-    file.read_exact(&mut size_bytes).expect("Failed to read decompressed size");
-    let decompressed_size = u64::from_le_bytes(size_bytes);
+    // Read size
+    file.seek(SeekFrom::Start(total_size - 40)).expect("Failed to seek");
+    let mut sizes_bytes = [0u8; 40];
+    file.read_exact(&mut sizes_bytes).expect("Failed to read sizes");
 
-    // Read encrypted size (8 bytes before decompressed size)
-    file.seek(SeekFrom::Start(total_size - 16)).expect("Failed to seek");
-    file.read_exact(&mut size_bytes).expect("Failed to read encrypted size");
-    let encrypted_size = u64::from_le_bytes(size_bytes);
+    let size_encrypted_payload = u64::from_le_bytes(sizes_bytes[0..8].try_into().unwrap());
+    let size_a1 = u64::from_le_bytes(sizes_bytes[8..16].try_into().unwrap());
+    let size_a2 = u64::from_le_bytes(sizes_bytes[16..24].try_into().unwrap());
+    let size_white_data = u64::from_le_bytes(sizes_bytes[24..32].try_into().unwrap());
+    let decompressed_size = u64::from_le_bytes(sizes_bytes[32..40].try_into().unwrap());
 
-    // Read the encrypted payload
-    file.seek(SeekFrom::Start(total_size - 16 - encrypted_size)).expect("Failed to seek");
-    let mut encrypted_payload = vec![0u8; encrypted_size as usize];
+    // Compute start positions
+    let start_white_data = total_size - 40 - size_white_data;
+    let start_a2 = start_white_data - size_a2;
+    let start_a1 = start_a2 - size_a1;
+    let start_encrypted_payload = start_a1 - size_encrypted_payload;
+
+    // Read sections
+    file.seek(SeekFrom::Start(start_encrypted_payload)).expect("Failed to seek");
+    let mut encrypted_payload = vec![0u8; size_encrypted_payload as usize];
     file.read_exact(&mut encrypted_payload).expect("Failed to read encrypted payload");
 
-    // Decrypt the payload using the embedded AES key
-    let aes = AES128::new(&AES_KEY);
+    file.seek(SeekFrom::Start(start_a1)).expect("Failed to seek");
+    let mut serialized_a1 = vec![0u8; size_a1 as usize];
+    file.read_exact(&mut serialized_a1).expect("Failed to read serialized a1");
+
+    file.seek(SeekFrom::Start(start_a2)).expect("Failed to seek");
+    let mut serialized_a2 = vec![0u8; size_a2 as usize];
+    file.read_exact(&mut serialized_a2).expect("Failed to read serialized a2");
+
+    file.seek(SeekFrom::Start(start_white_data)).expect("Failed to seek");
+    let mut serialized_white_data = vec![0u8; size_white_data as usize];
+    file.read_exact(&mut serialized_white_data).expect("Failed to read serialized WhiteData");
+
+    // Deserialize
+    let white_data: WhiteData = bincode::deserialize(&serialized_white_data).expect("Failed to deserialize WhiteData");
+    let a1: NTRUVector = bincode::deserialize(&serialized_a1).expect("Failed to deserialize a1");
+    let a2: NTRUVector = bincode::deserialize(&serialized_a2).expect("Failed to deserialize a2");
+
+    // Decrypt the AES key
+    let decrypted_bits = decrypt_message(&white_data, &a1, &a2, a1.degree, a1.modulus);
+    let mut aes_key = [0u8; 16];
+    for i in 0..16 {
+        for j in 0..8 {
+            let bit = decrypted_bits[i * 8 + j] as u8;
+            aes_key[i] |= bit << j;
+        }
+    }
+
+    // Decrypt packed binary
+    let aes = AES128::new(&aes_key);
     let padded_compressed_data = (aes.decrypt)(&aes, &encrypted_payload);
     let compressed_data = aes::unpad_pkcs7(&padded_compressed_data).expect("Invalid padding");
 
-    // Decompress the data
+    // Decompress
     let decompressed_data = decompress(&compressed_data, decompressed_size as usize)
         .expect("Failed to decompress");
 
     let timecheck_start = Instant::now();
-    // Create an in-memory file descriptor
     let name = CString::new("meow").unwrap();
     let fd = unsafe { memfd_create(name.as_ptr(), 0) };
     if fd < 0 {
@@ -146,7 +170,6 @@ fn main() {
     memfd_file.write_all(&decompressed_data).expect("Failed to write to memfd");
     timecheck!(timecheck_start, Duration::from_millis(100));
 
-    // Run the decompressed binary
     let prog_path = format!("/proc/self/fd/{}", fd);
     let prog_name = CString::new(prog_path).unwrap();
     let argv: [*const c_char; 2] = [prog_name.as_ptr(), std::ptr::null()];
