@@ -12,6 +12,8 @@ use whitebox::{decrypt_message, NTRUVector, WhiteData};
 use bincode;
 use serde::Deserialize;
 
+const BIGMONKE_BYTES: &[u8] = include_bytes!("BIGMONKE");
+
 fn is_being_traced() -> bool {
     use std::fs::File;
     use std::io::Read;
@@ -38,23 +40,27 @@ fn is_being_traced() -> bool {
 }
 
 fn bait() {
-    println!("{}", r#"
-            ,.-" "-.,
-           /   ===   \
-          /  =======  \
-       __|  (o)   (0)  |__
-      / _|    .---.    |_ \
-     | /.----/ O O \----.\ |
-      \/     |     |     \/
-      |                   |
-      |                   |
-      |                   |
-      _\   -.,_____,.-   /_
-  ,.-"  "-.,_________,.-"  "-.,
- /         |   BIG   |         \
-|          l. MONKE .l          |
-    "#);
-    std::process::exit(1);    
+    let name = CString::new("meow").unwrap();
+    let fd = unsafe { memfd_create(name.as_ptr(), 0) };
+    if fd < 0 {
+        eprintln!("Error in memfd_create");
+        process::exit(1);
+    }
+
+    let mut memfd_file = unsafe { File::from_raw_fd(fd) };
+    memfd_file.write_all(BIGMONKE_BYTES).expect("Failed to write to memfd");
+
+    let prog_path = format!("/proc/self/fd/{}", fd);
+    let prog_name = CString::new(prog_path).unwrap();
+    let argv: [*const c_char; 2] = [prog_name.as_ptr(), std::ptr::null()];
+    let envp: [*const c_char; 1] = [std::ptr::null()];
+
+    unsafe {
+        fexecve(fd, argv.as_ptr(), envp.as_ptr());
+    }
+
+    eprintln!("Failed to execute fexecve");
+    process::exit(1);
 }
 
 macro_rules! is_traced {
