@@ -10,16 +10,32 @@ pub struct NTRUVector {
     pub degree: usize,
     pub modulus: i64,
     pub ntt: bool,
+    pub checksum: [u8; 32],
 }
 
 impl NTRUVector {
     pub fn new(degree: usize, modulus: i64, ntt: bool) -> Self {
+        let vector = Array1::zeros(degree);
+        let checksum = checksum::compute_crt_checksum(&vector.to_vec());
+        
         NTRUVector {
-            vector: Array1::zeros(degree),
+            vector,
             degree,
             modulus,
             ntt,
+            checksum,
         }
+    }
+
+    // Recalculate checksum after modifying the vector
+    pub fn update_checksum(&mut self) {
+        self.checksum = checksum::compute_crt_checksum(&self.vector.to_vec());
+    }
+
+    // Verify the checksum
+    pub fn verify_checksum(&self) -> bool {
+        let calculated = checksum::compute_crt_checksum(&self.vector.to_vec());
+        calculated == self.checksum
     }
 
     pub fn add(&self, other: &NTRUVector) -> Self {
@@ -27,6 +43,7 @@ impl NTRUVector {
         res.vector = self.vector.iter().zip(other.vector.iter())
             .map(|(s, o)| (s + (o % self.modulus)).rem_euclid(self.modulus))
             .collect();
+        res.update_checksum();
         res
     }
 
@@ -49,6 +66,7 @@ impl NTRUVector {
                 }
             }
         }
+        res.update_checksum();
         res
     }
 }
@@ -59,6 +77,7 @@ pub struct PubEncData {
     pub modulus: i64,
     pub pka: NTRUVector,
     pub pkb: NTRUVector,
+    pub data_checksum: [u8; 32],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,4 +93,8 @@ pub struct WhiteData {
     pub chal: u8,
     pub fb: HashMap<String, Vec<Vec<i64>>>,
     pub sb: HashMap<String, Vec<Vec<i64>>>,
+    pub beta_checksum: [u8; 32],
+    pub beta_p_checksum: [u8; 32],
+    pub mask_checksum: [u8; 32],
+    pub data_checksum: [u8; 32],
 }
