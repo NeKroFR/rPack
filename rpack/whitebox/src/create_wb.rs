@@ -47,6 +47,7 @@ impl NTRUVector {
             }
             size *= 2;
         }
+        self.update_checksum();
     }
 
     pub fn goback_ntt(&mut self, unroot: i64, ninv: i64) {
@@ -96,6 +97,7 @@ impl NTRUVector {
         for i in 0..n {
             self.vector[i] = (self.vector[i] * ninv * powtable2[i]).rem_euclid(self.modulus);
         }
+        self.update_checksum();
     }
 }
 
@@ -106,6 +108,7 @@ impl Neg for NTRUVector {
         for i in 0..res.degree {
             res.vector[i] = (-res.vector[i]).rem_euclid(res.modulus);
         }
+        res.update_checksum();
         res
     }
 }
@@ -121,7 +124,19 @@ fn bit_reverse(x: usize, bits: usize) -> usize {
 }
 
 fn goto_crt(x: i64, base: &[i64]) -> Vec<i64> {
-    base.iter().map(|&b| x.rem_euclid(b)).collect()
+    let crt_values = base.iter().map(|&b| x.rem_euclid(b)).collect();    
+    crt_values
+}
+
+fn goback_crt(x_b: &[i64], base: &[i64]) -> i64 {
+    let mut x = 0;
+    let b_prod: i64 = base.iter().product();
+    for i in 0..base.len() {
+        let b_i = b_prod / base[i];
+        let (_, mi, _) = xgcd(b_i, base[i]);
+        x = (x + (x_b[i] * b_i % b_prod).rem_euclid(b_prod) * mi % b_prod).rem_euclid(b_prod);
+    }
+    x.rem_euclid(b_prod)
 }
 
 fn xgcd(b: i64, n: i64) -> (i64, i64, i64) {
@@ -159,6 +174,11 @@ fn key_gen(degree: usize, q: i64) -> (NTRUVector, NTRUVector, NTRUVector) {
         let sample_pkb: f64 = rng.sample(normal);
         pkb.vector[i] = 2 * sample_pkb.round() as i64;
     }
+    
+    sk.update_checksum();
+    pka.update_checksum();
+    pkb.update_checksum();
+    
     pkb = -(pkb.add(&pka.mul(&sk)));
     (pka, pkb, sk)
 }
@@ -177,10 +197,17 @@ fn encrypt(m: &[i64], pka: &NTRUVector, pkb: &NTRUVector, degree: usize, modulus
         let sample_e2: f64 = rng.sample(normal);
         e2.vector[i] = 2 * sample_e2.round() as i64;
     }
+    
+    u.update_checksum();
+    e1.update_checksum();
+    e2.update_checksum();
+    
     let mut tmp = NTRUVector::new(degree, modulus, false);
     for i in 0..degree {
         tmp.vector[i] = m[i];
     }
+    tmp.update_checksum();
+    
     let a1 = pka.mul(&u).add(&e1);
     let a2 = pkb.mul(&u).add(&e2).add(&tmp);
     (a1, a2)
@@ -518,11 +545,24 @@ pub fn generate_whitebox_data(degree: usize, modulus: i64, beta: &[i64], beta_p:
         _ => panic!("Invalid challenge level"),
     };
 
+    let beta_checksum = checksum::compute_crt_checksum(beta);
+    let beta_p_checksum = checksum::compute_crt_checksum(beta_p);
+    let mask_checksum = checksum::compute_crt_checksum(&mask);
+    
+    let mut all_data = Vec::new();
+    all_data.extend_from_slice(&[root, unroot, ninv]);
+    all_data.extend_from_slice(&[k as i64, rot as i64, chal as i64]);
+    let data_checksum = checksum::compute_crt_checksum(&all_data);
+    
+    let pub_data = format!("{}:{}", degree, modulus).into_bytes();
+    let pub_data_checksum = checksum::compute_blake3(&pub_data);
+    
     let pub_enc_data = PubEncData {
         degree,
         modulus,
         pka: pka.clone(),
         pkb: pkb.clone(),
+        data_checksum: pub_data_checksum,
     };
 
     let white_data = WhiteData {
@@ -537,6 +577,10 @@ pub fn generate_whitebox_data(degree: usize, modulus: i64, beta: &[i64], beta_p:
         chal,
         fb,
         sb,
+        beta_checksum,
+        beta_p_checksum,
+        mask_checksum,
+        data_checksum,
     };
 
     (pub_enc_data, white_data)
@@ -549,5 +593,30 @@ pub fn create_whitebox() -> (PubEncData, WhiteData) {
     let beta_p = vec![11, 17, 23, 25, 31];
     let k = 5;
     let chal = 2;
-    generate_whitebox_data(degree, modulus, &beta, &beta_p, k, chal)
+    let (mut pub_enc_data, mut white_data) = generate_whitebox_data(degree, modulus, &beta, &beta_p, k, chal);
+    
+    let beta_checksum = checksum::compute_crt_checksum(&beta);
+    let beta_p_checksum = checksum::compute_crt_checksum(&beta_p);
+    let mask_checksum = checksum::compute_crt_checksum(&white_data.mask);
+    
+    let mut all_data = Vec::new();
+    all_data.extend_from_slice(&[white_data.root, white_data.unroot, white_data.ninv]);
+    all_data.extend_from_slice(&[white_data.k as i64, white_data.rotate as i64, white_data.chal as i64]);
+    let data_checksum = checksum::compute_crt_checksum(&all_data);
+    
+    let pub_data = format!("{}:{}",
+        pub_enc_data.degree,
+        pub_enc_data.modulus
+    ).into_bytes();
+    
+    let pub_data_checksum = checksum::compute_blake3(&pub_data);
+    
+    white_data.beta_checksum = beta_checksum;
+    white_data.beta_p_checksum = beta_p_checksum;
+    white_data.mask_checksum = mask_checksum;
+    white_data.data_checksum = data_checksum;
+    
+    pub_enc_data.data_checksum = pub_data_checksum;
+    
+    (pub_enc_data, white_data)
 }
