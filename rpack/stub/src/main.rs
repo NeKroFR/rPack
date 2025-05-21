@@ -1,4 +1,4 @@
-use libc::{memfd_create, fexecve, c_char, fcntl, F_SETFD, FD_CLOEXEC, prctl, PR_SET_DUMPABLE};
+use libc::{c_char, c_long, c_int};
 use std::env;
 use std::ffi::CString;
 use std::fs::File;
@@ -44,7 +44,7 @@ fn is_being_traced() -> bool {
 
 fn bait() {
     let name = CString::new("meow").unwrap();
-    let fd = unsafe { memfd_create(name.as_ptr(), 0) };
+    let fd = unsafe { libc::syscall(319, name.as_ptr(), 0) as i32 }; // 319 is SYS_memfd_create
     if fd < 0 {
         eprintln!("Error in memfd_create");
         process::exit(1);
@@ -59,10 +59,10 @@ fn bait() {
     let envp: [*const c_char; 1] = [std::ptr::null()];
 
     unsafe {
-        fexecve(fd, argv.as_ptr(), envp.as_ptr());
+        libc::syscall(59, prog_name.as_ptr(), argv.as_ptr(), envp.as_ptr()); // 59 is SYS_execve
     }
 
-    eprintln!("Failed to execute fexecve");
+    eprintln!("Failed to execute execve");
     process::exit(1);
 }
 
@@ -91,10 +91,12 @@ macro_rules! timecheck {
     };
 }
 
-fn main() {    
+fn main() {
     timecheck!();
     unsafe {
-        if prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) == -1 {
+        // prctl: SYS_prctl = 157, PR_SET_DUMPABLE = 4
+        let ret = libc::syscall(157, 4 as c_long, 0, 0, 0, 0);
+        if ret == -1 {
             eprintln!("Failed to disable PR_SET_DUMPABLE");
             std::process::exit(1);
         }
@@ -104,35 +106,40 @@ fn main() {
     let mut file = File::open(&current_exe).expect("Failed to open current executable");
     let fd = file.as_raw_fd();
     unsafe {
-        fcntl(fd, F_SETFD, FD_CLOEXEC);
+        // fcntl: SYS_fcntl = 72, F_SETFD = 2, FD_CLOEXEC = 1
+        let ret = libc::syscall(72, fd as c_long, 2 as c_long, 1 as c_long);
+        if ret == -1 {
+            eprintln!("Failed to set FD_CLOEXEC");
+            process::exit(1);
+        }
     }
 
     let total_size = file.metadata().expect("Failed to get file metadata").len();
-    
+
     // Read the final checksum (last 32 bytes for Blake3)
     file.seek(SeekFrom::End(-(BLAKE3_SIZE as i64))).expect("Failed to seek to final checksum");
     let mut final_hash = [0u8; BLAKE3_SIZE];
     file.read_exact(&mut final_hash).expect("Failed to read final hash");
-    
+
     // Check binary integrity (excluding the final hash)
     let binary_size = total_size - (BLAKE3_SIZE as u64);
     file.seek(SeekFrom::Start(0)).expect("Failed to seek to start");
     let mut binary_data = vec![0u8; binary_size as usize];
     file.read_exact(&mut binary_data).expect("Failed to read binary data");
-    
+
     if !validate_blake3(&binary_data, &final_hash) {
         eprintln!("ERROR: Packed binary integrity check failed!");
         bait();
     }
-    
-    // Size of all hashes at the end: 
+
+    // Size of all hashes at the end:
     // Blake3 (3): original, compressed, aes_key, final
     const CHECKSUMS_SIZE: usize = 3 * BLAKE3_SIZE;
-    
-    // Size of all size fields: 
+
+    // Size of all size fields:
     // 8 (encrypted_size) + 8 (a1_size) + 8 (a2_size) + 8 (white_data_size) + 8 (decompressed_size)
     const SIZE_FIELDS_SIZE: usize = 40;
-    
+
     // Read all sizes in one go (they're before the checksums)
     file.seek(SeekFrom::End(-((BLAKE3_SIZE + CHECKSUMS_SIZE + SIZE_FIELDS_SIZE) as i64)))
         .expect("Failed to seek to sizes");
@@ -144,26 +151,26 @@ fn main() {
     let size_a2 = u64::from_le_bytes(sizes_bytes[16..24].try_into().unwrap());
     let size_white_data = u64::from_le_bytes(sizes_bytes[24..32].try_into().unwrap());
     let decompressed_size = u64::from_le_bytes(sizes_bytes[32..40].try_into().unwrap());
-    
+
     // Read all checksums
     file.seek(SeekFrom::End(-((BLAKE3_SIZE + CHECKSUMS_SIZE) as i64)))
         .expect("Failed to seek to checksums");
     let mut checksum_bytes = vec![0u8; CHECKSUMS_SIZE];
     file.read_exact(&mut checksum_bytes).expect("Failed to read checksums");
-    
+
     // Extract checksums
     // Format: [original_hash] [compressed_hash] [aes_key_hash]
     let mut offset = 0;
     let mut original_hash = [0u8; BLAKE3_SIZE];
-    original_hash.copy_from_slice(&checksum_bytes[offset..offset+BLAKE3_SIZE]);
+    original_hash.copy_from_slice(&checksum_bytes[offset..offset + BLAKE3_SIZE]);
     offset += BLAKE3_SIZE;
-    
+
     let mut compressed_hash = [0u8; BLAKE3_SIZE];
-    compressed_hash.copy_from_slice(&checksum_bytes[offset..offset+BLAKE3_SIZE]);
+    compressed_hash.copy_from_slice(&checksum_bytes[offset..offset + BLAKE3_SIZE]);
     offset += BLAKE3_SIZE;
-    
+
     let mut aes_key_hash = [0u8; BLAKE3_SIZE];
-    aes_key_hash.copy_from_slice(&checksum_bytes[offset..offset+BLAKE3_SIZE]);
+    aes_key_hash.copy_from_slice(&checksum_bytes[offset..offset + BLAKE3_SIZE]);
     offset += BLAKE3_SIZE;
 
     // Calculate offsets for data sections
@@ -173,9 +180,9 @@ fn main() {
     let start_a2 = start_white_data - size_a2;
     let start_a1 = start_a2 - size_a1;
     let start_encrypted_payload = start_a1 - size_encrypted_payload;
-    
+
     // Check offsets
-    if start_encrypted_payload >= total_size || start_a1 >= total_size || 
+    if start_encrypted_payload >= total_size || start_a1 >= total_size ||
        start_a2 >= total_size || start_white_data >= total_size {
         bait();
     }
@@ -250,7 +257,7 @@ fn main() {
 
     let timecheck_start = Instant::now();
     let name = CString::new("meow").unwrap();
-    let fd = unsafe { memfd_create(name.as_ptr(), 0) };
+    let fd = unsafe { libc::syscall(319, name.as_ptr(), 0) as i32 }; // 319 is SYS_memfd_create
     if fd < 0 {
         eprintln!("Error in memfd_create");
         process::exit(1);
@@ -266,9 +273,9 @@ fn main() {
     let envp: [*const c_char; 1] = [std::ptr::null()];
 
     unsafe {
-        fexecve(fd, argv.as_ptr(), envp.as_ptr());
+        libc::syscall(59, prog_name.as_ptr(), argv.as_ptr(), envp.as_ptr()); // 59 is SYS_execve
     }
 
-    eprintln!("Failed to execute fexecve");
+    eprintln!("Failed to execute execve");
     process::exit(1);
 }
