@@ -11,6 +11,7 @@ use aes::AES128;
 use whitebox::{decrypt_message, NTRUVector, WhiteData};
 use bincode;
 use checksum::validate_blake3;
+use ctor::ctor;
 
 const BIGMONKE_BYTES: &[u8] = include_bytes!("BIGMONKE");
 
@@ -108,6 +109,66 @@ macro_rules! timecheck {
     };
 }
 
+#[ctor]
+fn init_checksum_validation() {
+    let current_exe = match env::current_exe() {
+        Ok(path) => path,
+        Err(_) => {
+            // eprintln!("Failed to get current executable path");
+            bait();
+            return;
+        }
+    };
+    let mut file = match File::open(&current_exe) {
+        Ok(f) => f,
+        Err(_) => {
+            // eprintln!("Failed to open current executable");
+            bait();
+            return;
+        }
+    };
+    let total_size = match file.metadata() {
+        Ok(metadata) => metadata.len(),
+        Err(_) => {
+            // eprintln!("Failed to get file metadata");
+            bait();
+            return;
+        }
+    };
+
+    // Read the final checksum (last 32 bytes for Blake3)
+    if file.seek(SeekFrom::End(-(BLAKE3_SIZE as i64))).is_err() {
+        // eprintln!("Failed to seek to final hash");
+        bait();
+        return;
+    }
+    let mut final_hash = [0u8; BLAKE3_SIZE];
+    if file.read_exact(&mut final_hash).is_err() {
+        // eprintln!("Failed to read final hash");
+        bait();
+        return;
+    }
+
+    // Check binary integrity (excluding the final hash)
+    let binary_size = total_size - (BLAKE3_SIZE as u64);
+    if file.seek(SeekFrom::Start(0)).is_err() {
+        // eprintln!("Failed to seek to start of binary");
+        bait();
+        return;
+    }
+    let mut binary_data = vec![0u8; binary_size as usize];
+    if file.read_exact(&mut binary_data).is_err() {
+        // eprintln!("Failed to read binary data");
+        bait();
+        return;
+    }
+
+    if !validate_blake3(&binary_data, &final_hash) {
+        // eprintln!("ERROR: Binary integrity check failed");
+        bait();
+    }
+}
+
 fn main() {
     timecheck!();
     unsafe {
@@ -155,39 +216,6 @@ fn main() {
             return;
         }
     };
-
-    // Read the final checksum (last 32 bytes for Blake3)
-    if file.seek(SeekFrom::End(-(BLAKE3_SIZE as i64))).is_err() {
-        // eprintln!("Failed to seek to final checksum");
-        bait();
-        return;
-    }
-    let mut final_hash = [0u8; BLAKE3_SIZE];
-    if file.read_exact(&mut final_hash).is_err() {
-        // eprintln!("Failed to read final hash");
-        bait();
-        return;
-    }
-
-    // Check binary integrity (excluding the final hash)
-    let binary_size = total_size - (BLAKE3_SIZE as u64);
-    if file.seek(SeekFrom::Start(0)).is_err() {
-        // eprintln!("Failed to seek to start");
-        bait();
-        return;
-    }
-    let mut binary_data = vec![0u8; binary_size as usize];
-    if file.read_exact(&mut binary_data).is_err() {
-        // eprintln!("Failed to read binary data");
-        bait();
-        return;
-    }
-
-    if !validate_blake3(&binary_data, &final_hash) {
-        // eprintln!("ERROR: Packed binary integrity check failed");
-        bait();
-        return;
-    }
 
     // Size of all hashes at the end:
     // Blake3 (3): original, compressed, aes_key
