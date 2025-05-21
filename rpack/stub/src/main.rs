@@ -1,4 +1,4 @@
-use libc::{c_char, c_long, c_int};
+use libc::{c_char, c_long};
 use std::env;
 use std::ffi::CString;
 use std::fs::File;
@@ -10,8 +10,7 @@ use lz4_flex::decompress;
 use aes::AES128;
 use whitebox::{decrypt_message, NTRUVector, WhiteData};
 use bincode;
-use serde::Deserialize;
-use checksum::{compute_blake3, validate_blake3};
+use checksum::validate_blake3;
 
 const BIGMONKE_BYTES: &[u8] = include_bytes!("BIGMONKE");
 
@@ -43,18 +42,29 @@ fn is_being_traced() -> bool {
 }
 
 fn bait() {
-    let name = CString::new("meow").unwrap();
+    let name = match CString::new("meow") {
+        Ok(name) => name,
+        Err(_) => { // Error creating CString for memfd_create
+            process::exit(1);
+        }
+    };
     let fd = unsafe { libc::syscall(319, name.as_ptr(), 0) as i32 }; // 319 is SYS_memfd_create
-    if fd < 0 {
-        eprintln!("Error in memfd_create");
+    if fd < 0 { // Error in memfd_create
         process::exit(1);
     }
 
     let mut memfd_file = unsafe { File::from_raw_fd(fd) };
-    memfd_file.write_all(BIGMONKE_BYTES).expect("Failed to write to memfd");
+    if memfd_file.write_all(BIGMONKE_BYTES).is_err() { // Error writing to memfd
+        process::exit(1);
+    }
 
     let prog_path = format!("/proc/self/fd/{}", fd);
-    let prog_name = CString::new(prog_path).unwrap();
+    let prog_name = match CString::new(prog_path) {
+        Ok(name) => name,
+        Err(_) => {  // Error creating CString for execve
+            process::exit(1);
+        }
+    };
     let argv: [*const c_char; 2] = [prog_name.as_ptr(), std::ptr::null()];
     let envp: [*const c_char; 1] = [std::ptr::null()];
 
@@ -62,7 +72,7 @@ fn bait() {
         libc::syscall(59, prog_name.as_ptr(), argv.as_ptr(), envp.as_ptr()); // 59 is SYS_execve
     }
 
-    eprintln!("Failed to execute execve");
+    // Failed to execute execve
     process::exit(1);
 }
 
@@ -96,40 +106,69 @@ fn main() {
     unsafe {
         // prctl: SYS_prctl = 157, PR_SET_DUMPABLE = 4
         let ret = libc::syscall(157, 4 as c_long, 0, 0, 0, 0);
-        if ret == -1 {
-            eprintln!("Failed to disable PR_SET_DUMPABLE");
+        if ret == -1 { // Failed to disable PR_SET_DUMPABLE
             std::process::exit(1);
         }
     }
 
-    let current_exe = env::current_exe().expect("Failed to get current executable path");
-    let mut file = File::open(&current_exe).expect("Failed to open current executable");
+    let current_exe = match env::current_exe() {
+        Ok(path) => path,
+        Err(_) => {
+            bait();
+            return;
+        }
+    };
+    let mut file = match File::open(&current_exe) {
+        Ok(f) => f,
+        Err(_) => {
+            bait();
+            return;
+        }
+    };
     let fd = file.as_raw_fd();
     unsafe {
         // fcntl: SYS_fcntl = 72, F_SETFD = 2, FD_CLOEXEC = 1
         let ret = libc::syscall(72, fd as c_long, 2 as c_long, 1 as c_long);
-        if ret == -1 {
-            eprintln!("Failed to set FD_CLOEXEC");
-            process::exit(1);
+        if ret == -1 { // Failed to set FD_CLOEXEC
+            bait();
+            return;
         }
     }
 
-    let total_size = file.metadata().expect("Failed to get file metadata").len();
+    let total_size = match file.metadata() {
+        Ok(metadata) => metadata.len(),
+        Err(_) => {
+            bait();
+            return;
+        }
+    };
 
     // Read the final checksum (last 32 bytes for Blake3)
-    file.seek(SeekFrom::End(-(BLAKE3_SIZE as i64))).expect("Failed to seek to final checksum");
+    if file.seek(SeekFrom::End(-(BLAKE3_SIZE as i64))).is_err() {
+        bait();
+        return;
+    }
     let mut final_hash = [0u8; BLAKE3_SIZE];
-    file.read_exact(&mut final_hash).expect("Failed to read final hash");
+    if file.read_exact(&mut final_hash).is_err() {
+        bait();
+        return;
+    }
 
     // Check binary integrity (excluding the final hash)
     let binary_size = total_size - (BLAKE3_SIZE as u64);
-    file.seek(SeekFrom::Start(0)).expect("Failed to seek to start");
+    if file.seek(SeekFrom::Start(0)).is_err() {
+        bait();
+        return;
+    }
     let mut binary_data = vec![0u8; binary_size as usize];
-    file.read_exact(&mut binary_data).expect("Failed to read binary data");
+    if file.read_exact(&mut binary_data).is_err() {
+        bait();
+        return;
+    }
 
     if !validate_blake3(&binary_data, &final_hash) {
-        eprintln!("ERROR: Packed binary integrity check failed!");
         bait();
+        return;
     }
 
     // Size of all hashes at the end:
@@ -141,10 +180,15 @@ fn main() {
     const SIZE_FIELDS_SIZE: usize = 40;
 
     // Read all sizes in one go (they're before the checksums)
-    file.seek(SeekFrom::End(-((BLAKE3_SIZE + CHECKSUMS_SIZE + SIZE_FIELDS_SIZE) as i64)))
-        .expect("Failed to seek to sizes");
+    if file.seek(SeekFrom::End(-((BLAKE3_SIZE + CHECKSUMS_SIZE + SIZE_FIELDS_SIZE) as i64))).is_err() {
+        bait();
+        return;
+    }
     let mut sizes_bytes = [0u8; SIZE_FIELDS_SIZE];
-    file.read_exact(&mut sizes_bytes).expect("Failed to read sizes");
+    if file.read_exact(&mut sizes_bytes).is_err() {
+        bait();
+        return;
+    }
 
     let size_encrypted_payload = u64::from_le_bytes(sizes_bytes[0..8].try_into().unwrap());
     let size_a1 = u64::from_le_bytes(sizes_bytes[8..16].try_into().unwrap());
@@ -153,10 +197,15 @@ fn main() {
     let decompressed_size = u64::from_le_bytes(sizes_bytes[32..40].try_into().unwrap());
 
     // Read all checksums
-    file.seek(SeekFrom::End(-((BLAKE3_SIZE + CHECKSUMS_SIZE) as i64)))
-        .expect("Failed to seek to checksums");
+    if file.seek(SeekFrom::End(-((BLAKE3_SIZE + CHECKSUMS_SIZE) as i64))).is_err() {
+        bait();
+        return;
+    }
     let mut checksum_bytes = vec![0u8; CHECKSUMS_SIZE];
-    file.read_exact(&mut checksum_bytes).expect("Failed to read checksums");
+    if file.read_exact(&mut checksum_bytes).is_err() {
+        bait();
+        return;
+    }
 
     // Extract checksums
     // Format: [original_hash] [compressed_hash] [aes_key_hash]
@@ -185,37 +234,77 @@ fn main() {
     if start_encrypted_payload >= total_size || start_a1 >= total_size ||
        start_a2 >= total_size || start_white_data >= total_size {
         bait();
+        return;
     }
 
     // Read sections
-    file.seek(SeekFrom::Start(start_encrypted_payload)).expect("Failed to seek to encrypted payload");
+    if file.seek(SeekFrom::Start(start_encrypted_payload)).is_err() {
+        bait();
+        return;
+    }
     let mut encrypted_payload = vec![0u8; size_encrypted_payload as usize];
-    file.read_exact(&mut encrypted_payload).expect("Failed to read encrypted payload");
+    if file.read_exact(&mut encrypted_payload).is_err() {
+        bait();
+        return;
+    }
 
-    file.seek(SeekFrom::Start(start_a1)).expect("Failed to seek to a1");
+    if file.seek(SeekFrom::Start(start_a1)).is_err() {
+        bait();
+        return;
+    }
     let mut serialized_a1 = vec![0u8; size_a1 as usize];
-    file.read_exact(&mut serialized_a1).expect("Failed to read serialized a1");
+    if file.read_exact(&mut serialized_a1).is_err() {
+        bait();
+        return;
+    }
 
-    file.seek(SeekFrom::Start(start_a2)).expect("Failed to seek to a2");
+    if file.seek(SeekFrom::Start(start_a2)).is_err() {
+        bait();
+        return;
+    }
     let mut serialized_a2 = vec![0u8; size_a2 as usize];
-    file.read_exact(&mut serialized_a2).expect("Failed to read serialized a2");
+    if file.read_exact(&mut serialized_a2).is_err() {
+        bait();
+        return;
+    }
 
-    file.seek(SeekFrom::Start(start_white_data)).expect("Failed to seek to white data");
+    if file.seek(SeekFrom::Start(start_white_data)).is_err() {
+        bait();
+        return;
+    }
     let mut serialized_white_data = vec![0u8; size_white_data as usize];
-    file.read_exact(&mut serialized_white_data).expect("Failed to read serialized WhiteData");
+    if file.read_exact(&mut serialized_white_data).is_err() {
+        bait();
+        return;
+    }
 
     // Deserialize
-    let white_data: WhiteData = bincode::deserialize(&serialized_white_data)
-        .expect("Failed to deserialize WhiteData");
-    let a1: NTRUVector = bincode::deserialize(&serialized_a1)
-        .expect("Failed to deserialize a1");
-    let a2: NTRUVector = bincode::deserialize(&serialized_a2)
-        .expect("Failed to deserialize a2");
+    let white_data: WhiteData = match bincode::deserialize(&serialized_white_data) {
+        Ok(data) => data,
+        Err(_) => {
+            bait();
+            return;
+        }
+    };
+    let a1: NTRUVector = match bincode::deserialize(&serialized_a1) {
+        Ok(data) => data,
+        Err(_) => {
+            bait();
+            return;
+        }
+    };
+    let a2: NTRUVector = match bincode::deserialize(&serialized_a2) {
+        Ok(data) => data,
+        Err(_) => {
+            bait();
+            return;
+        }
+    };
 
     // NTRUVector checksums
     if !a1.verify_checksum() || !a2.verify_checksum() {
-        eprintln!("ERROR: NTRUVector checksum verification failed!");
         bait();
+        return;
     }
 
     // Decrypt the AES key
@@ -230,45 +319,71 @@ fn main() {
 
     // AES key checksum
     if !validate_blake3(&aes_key, &aes_key_hash) {
-        eprintln!("ERROR: AES key verification failed!");
         bait();
+        return;
     }
 
     // Decrypt packed binary
     let aes = AES128::new(&aes_key);
     let padded_compressed_data = (aes.decrypt)(&aes, &encrypted_payload);
-    let compressed_data = aes::unpad_pkcs7(&padded_compressed_data).expect("Invalid padding");
+    let compressed_data = match aes::unpad_pkcs7(&padded_compressed_data) {
+        Some(data) => data,
+        None => {
+            bait();
+            return;
+        }
+    };
 
     // Compressed data checksum
     if !validate_blake3(&compressed_data, &compressed_hash) {
-        eprintln!("ERROR: Compressed data verification failed!");
         bait();
+        return;
     }
 
     // Decompress
-    let decompressed_data = decompress(&compressed_data, decompressed_size as usize)
-        .expect("Failed to decompress");
+    let decompressed_data = match decompress(&compressed_data, decompressed_size as usize) {
+        Ok(data) => data,
+        Err(_) => {
+            bait();
+            return;
+        }
+    };
 
     // Decompressed binary checksum
     if !validate_blake3(&decompressed_data, &original_hash) {
-        eprintln!("ERROR: Original binary verification failed!");
         bait();
+        return;
     }
 
     let timecheck_start = Instant::now();
-    let name = CString::new("meow").unwrap();
+    let name = match CString::new("meow") {
+        Ok(name) => name,
+        Err(_) => {
+            eprintln!("Error creating CString for memfd_create");
+            process::exit(1);
+        }
+    };
     let fd = unsafe { libc::syscall(319, name.as_ptr(), 0) as i32 }; // 319 is SYS_memfd_create
-    if fd < 0 {
-        eprintln!("Error in memfd_create");
-        process::exit(1);
+    if fd < 0 { // Error in memfd_create
+        bait();
+        return;
     }
 
     let mut memfd_file = unsafe { File::from_raw_fd(fd) };
-    memfd_file.write_all(&decompressed_data).expect("Failed to write to memfd");
+    if memfd_file.write_all(&decompressed_data).is_err() {
+        bait();
+        return;
+    }
     timecheck!(timecheck_start, Duration::from_millis(100));
 
     let prog_path = format!("/proc/self/fd/{}", fd);
-    let prog_name = CString::new(prog_path).unwrap();
+    let prog_name = match CString::new(prog_path) {
+        Ok(name) => name,
+        Err(_) => {
+            bait();
+            return;
+        }
+    };
     let argv: [*const c_char; 2] = [prog_name.as_ptr(), std::ptr::null()];
     let envp: [*const c_char; 1] = [std::ptr::null()];
 
@@ -276,6 +391,6 @@ fn main() {
         libc::syscall(59, prog_name.as_ptr(), argv.as_ptr(), envp.as_ptr()); // 59 is SYS_execve
     }
 
-    eprintln!("Failed to execute execve");
+    bait();
     process::exit(1);
 }
