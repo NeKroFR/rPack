@@ -423,3 +423,279 @@ pub fn unpad_pkcs7(data: &[u8]) -> Option<Vec<u8>> {
     }
     Some(data[..data.len() - padding_len].to_vec())
 }
+
+
+#[cfg(test)]
+mod tests_aes {
+    use super::*;
+
+    #[test]
+    fn test_aes_key_generation() {
+        let key1 = AES128::generate_key();
+        let key2 = AES128::generate_key();
+        assert_ne!(key1, key2); // Les clés doivent être différentes
+        assert_eq!(key1.len(), 16);
+        assert_eq!(key2.len(), 16);
+    }
+
+    #[test]
+    fn test_aes_new_from_str() {
+        let key_str = "YELLOW SUBMARINE";
+        let aes = AES128::new_from_str(key_str);
+        // Test que l'instance se crée sans panic
+        assert_eq!(key_str.len(), 16);
+    }
+
+    #[test]
+    #[should_panic(expected = "Key needs to be 16 bytes long")]
+    fn test_aes_invalid_key_length() {
+        AES128::new_from_str("trop court");
+    }
+
+    #[test]
+    fn test_ecb_encrypt_decrypt() {
+        let key = "YELLOW SUBMARINE".as_bytes();
+        let aes = AES128::new(&key.try_into().unwrap());
+        
+        // Test avec un bloc de 16 bytes
+        let plaintext = b"Hello World!!!!!"; // 16 bytes exactement
+        let ciphertext = (aes.encrypt)(&aes, plaintext);
+        let decrypted = (aes.decrypt)(&aes, &ciphertext);
+        
+        assert_eq!(plaintext, &decrypted[..]);
+        assert_ne!(plaintext.to_vec(), ciphertext);
+    }
+
+    #[test]
+    fn test_ecb_multiple_blocks() {
+        let key = AES128::generate_key();
+        let aes = AES128::new(&key);
+        
+        // Test avec 32 bytes (2 blocs)
+        let plaintext = b"This is a test message with 32by"; // 32 bytes
+        let ciphertext = (aes.encrypt)(&aes, plaintext);
+        let decrypted = (aes.decrypt)(&aes, &ciphertext);
+        
+        assert_eq!(plaintext, &decrypted[..]);
+        assert_eq!(ciphertext.len(), 32);
+    }
+
+    #[test]
+    #[should_panic(expected = "Input must be multiple of 16 bytes")]
+    fn test_ecb_invalid_input_length() {
+        let key = AES128::generate_key();
+        let aes = AES128::new(&key);
+        let plaintext = b"Invalid length"; // 14 bytes
+        (aes.encrypt)(&aes, plaintext);
+    }
+
+    #[test]
+    fn test_encrypt_block() {
+        let key = "YELLOW SUBMARINE".as_bytes();
+        let aes = AES128::new(&key.try_into().unwrap());
+        
+        let block = [0u8; 16];
+        let encrypted = (aes.encrypt_block)(&aes, &block);
+        let decrypted = (aes.decrypt_block)(&aes, &encrypted);
+        
+        assert_eq!(block, decrypted);
+        assert_ne!(block, encrypted);
+    }
+
+    #[test]
+    fn test_cbc_encrypt_decrypt() {
+        let key = AES128::generate_key();
+        let aes = AES128::new(&key);
+        
+        let plaintext = b"Hello World! This is a test message for CBC mode encryption.";
+        let ciphertext = aes.encrypt_cbc(plaintext);
+        let decrypted = aes.decrypt_cbc(&ciphertext).unwrap();
+        
+        assert_eq!(plaintext, &decrypted[..]);
+        assert!(ciphertext.len() > plaintext.len()); // IV + padding
+    }
+
+    #[test]
+    fn test_cbc_with_padding() {
+        let key = AES128::generate_key();
+        let aes = AES128::new(&key);
+        
+        // Test avec différentes tailles
+        for size in 1..50 {
+            let plaintext = vec![b'A'; size];
+            let ciphertext = aes.encrypt_cbc(&plaintext);
+            let decrypted = aes.decrypt_cbc(&ciphertext).unwrap();
+            assert_eq!(plaintext, decrypted);
+        }
+    }
+
+    #[test]
+    fn test_cbc_invalid_ciphertext() {
+        let key = AES128::generate_key();
+        let aes = AES128::new(&key);
+        
+        // Ciphertext trop court
+        assert!(aes.decrypt_cbc(&[0u8; 15]).is_none());
+        
+        // Taille invalide
+        assert!(aes.decrypt_cbc(&[0u8; 20]).is_none());
+    }
+
+    #[test]
+    fn test_pkcs7_padding() {
+        // Test padding normal
+        let data = b"Hello";
+        let padded = pad_pkcs7(data, 16);
+        assert_eq!(padded.len(), 16);
+        assert_eq!(&padded[5..], &[11u8; 11]); // 11 bytes de padding avec valeur 11
+        
+        // Test unpadding
+        let unpadded = unpad_pkcs7(&padded).unwrap();
+        assert_eq!(unpadded, data);
+    }
+
+    #[test]
+    fn test_pkcs7_full_block() {
+        // Quand la taille est déjà un multiple du bloc
+        let data = b"Exactly 16 bytes"; // 16 bytes
+        let padded = pad_pkcs7(data, 16);
+        assert_eq!(padded.len(), 32); // Un bloc entier de padding
+        assert_eq!(&padded[16..], &[16u8; 16]);
+        
+        let unpadded = unpad_pkcs7(&padded).unwrap();
+        assert_eq!(unpadded, data);
+    }
+
+    #[test]
+    fn test_pkcs7_invalid_padding() {
+        // Padding invalide
+        assert!(unpad_pkcs7(&[]).is_none());
+        assert!(unpad_pkcs7(&[0u8]).is_none());
+        assert!(unpad_pkcs7(&[17u8]).is_none()); // > 16
+        assert!(unpad_pkcs7(&[1u8, 2u8]).is_none()); // Inconsistent
+    }
+
+    #[test]
+    fn test_galois_multiplication() {
+        // Tests connus pour la multiplication dans GF(2^8)
+        assert_eq!(galois_multiplication(0x02, 0x01), 0x02);
+        assert_eq!(galois_multiplication(0x02, 0x02), 0x04);
+        assert_eq!(galois_multiplication(0x02, 0x80), 0x1b);
+        assert_eq!(galois_multiplication(0x03, 0x01), 0x03);
+    }
+
+    #[test]
+    fn test_substitute() {
+        // Test S-box
+        assert_eq!(substitute(0x00, true), 0x63);
+        assert_eq!(substitute(0x01, true), 0x7c);
+        
+        // Test inverse S-box
+        assert_eq!(substitute(0x63, false), 0x00);
+        assert_eq!(substitute(0x7c, false), 0x01);
+        
+        // Test round-trip
+        for i in 0..256 {
+            let byte = i as u8;
+            let substituted = substitute(byte, true);
+            let back = substitute(substituted, false);
+            assert_eq!(byte, back);
+        }
+    }
+
+    #[test]
+    fn test_rot_word() {
+        let word = [0x01, 0x02, 0x03, 0x04];
+        let rotated = rot_word(&word);
+        assert_eq!(rotated, [0x02, 0x03, 0x04, 0x01]);
+    }
+
+    #[test]
+    fn test_xor_words() {
+        let word1 = [0x01, 0x02, 0x03, 0x04];
+        let word2 = [0x05, 0x06, 0x07, 0x08];
+        let result = xor_words(&word1, &word2);
+        assert_eq!(result, [0x04, 0x04, 0x04, 0x0c]);
+    }
+
+    #[test]
+    fn test_key_schedule() {
+        let key = [0u8; 16];
+        let expanded = key_schedule_aes128(&key);
+        
+        // Les 4 premiers mots doivent être la clé originale
+        for i in 0..4 {
+            assert_eq!(expanded[i], [0u8; 4]);
+        }
+        
+        // Vérifier que nous avons 44 mots (11 round keys * 4)
+        assert_eq!(expanded.len(), 44);
+    }
+
+    #[test]
+    fn test_aes_deterministic() {
+        let key = "YELLOW SUBMARINE".as_bytes();
+        let aes = AES128::new(&key.try_into().unwrap());
+        
+        let plaintext = b"Hello World!!!!!";
+        let ciphertext1 = (aes.encrypt)(&aes, plaintext);
+        let ciphertext2 = (aes.encrypt)(&aes, plaintext);
+        
+        // ECB doit être déterministe
+        assert_eq!(ciphertext1, ciphertext2);
+    }
+
+    #[test]
+    fn test_cbc_randomness() {
+        let key = AES128::generate_key();
+        let aes = AES128::new(&key);
+        
+        let plaintext = b"Hello World!";
+        let ciphertext1 = aes.encrypt_cbc(plaintext);
+        let ciphertext2 = aes.encrypt_cbc(plaintext);
+        
+        // CBC avec IV aléatoire doit produire des résultats différents
+        assert_ne!(ciphertext1, ciphertext2);
+        
+        // Mais le déchiffrement doit donner le même plaintext
+        assert_eq!(aes.decrypt_cbc(&ciphertext1).unwrap(), plaintext);
+        assert_eq!(aes.decrypt_cbc(&ciphertext2).unwrap(), plaintext);
+    }
+
+    #[test]
+    fn test_empty_input_cbc() {
+        let key = AES128::generate_key();
+        let aes = AES128::new(&key);
+        
+        let plaintext = b"";
+        let ciphertext = aes.encrypt_cbc(plaintext);
+        let decrypted = aes.decrypt_cbc(&ciphertext).unwrap();
+        
+        assert_eq!(decrypted, plaintext);
+        assert_eq!(ciphertext.len(), 32); // IV (16) + un bloc de padding (16)
+    }
+
+    #[test]
+    fn test_mul_tables() {
+        // Vérifier quelques valeurs des tables de multiplication
+        assert_eq!(MUL2[0x01], 0x02);
+        assert_eq!(MUL3[0x01], 0x03);
+        assert_eq!(MUL9[0x01], 0x09);
+        assert_eq!(MUL11[0x01], 0x0b);
+        assert_eq!(MUL13[0x01], 0x0d);
+        assert_eq!(MUL14[0x01], 0x0e);
+    }
+
+    #[test]
+    fn test_large_data() {
+        let key = AES128::generate_key();
+        let aes = AES128::new(&key);
+        
+        // Test avec des données plus importantes
+        let plaintext = vec![0x42; 1024]; // 1KB de données
+        let ciphertext = aes.encrypt_cbc(&plaintext);
+        let decrypted = aes.decrypt_cbc(&ciphertext).unwrap();
+        
+        assert_eq!(plaintext, decrypted);
+    }
+}

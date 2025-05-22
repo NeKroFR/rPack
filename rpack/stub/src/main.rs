@@ -41,7 +41,7 @@ fn is_being_traced() -> bool {
     }
     false
 }
-
+#[cfg(not(test))]
 fn bait() {
     let name = match CString::new("meow") {
         Ok(name) => name,
@@ -80,7 +80,7 @@ fn bait() {
     // eprintln!("Failed to execute execve");
     process::exit(1);
 }
-
+#[cfg(not(test))]
 macro_rules! is_traced {
     () => {
         if is_being_traced() {
@@ -89,7 +89,7 @@ macro_rules! is_traced {
         }
     };
 }
-
+#[cfg(not(test))]
 macro_rules! timecheck {
     () => {
         is_traced!();
@@ -108,7 +108,7 @@ macro_rules! timecheck {
         }
     };
 }
-
+#[cfg(not(test))]
 #[ctor]
 fn init_checksum_validation() {
     let current_exe = match env::current_exe() {
@@ -169,8 +169,10 @@ fn init_checksum_validation() {
     }
 }
 
+#[cfg(not(test))]
 fn main() {
     timecheck!();
+
     unsafe {
         // prctl: SYS_prctl = 157, PR_SET_DUMPABLE = 4
         let ret = libc::syscall(157, 4 as c_long, 0, 0, 0, 0);
@@ -464,4 +466,15 @@ fn main() {
 
     // eprintln!("Failed to execute execve");
     bait();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+   
+    #[test]
+    fn test_not_traced() {
+        assert_eq!(is_being_traced(), false);
+    }
+    
 }
