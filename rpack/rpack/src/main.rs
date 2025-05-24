@@ -1,16 +1,19 @@
 use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::Path;
 use std::os::unix::fs::PermissionsExt;
-use lz4_flex::compress;
 use aes::AES128;
+use lz4_flex::compress;
 use whitebox::{create_whitebox, encrypt_func};
+use checksum::{compute_blake3, hash_to_hex};
 use ndarray::Array1;
 use bincode;
-use checksum::{compute_blake3, validate_blake3, hash_to_hex};
 
 const STUB_DATA: &[u8] = include_bytes!("../../target/stub.bin");
+
+fn validate_elf(data: &[u8]) -> bool {
+    data.len() >= 4 && &data[0..4] == b"\x7FELF"
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -25,7 +28,7 @@ fn main() {
     let mut input_data = Vec::new();
     input_file.read_to_end(&mut input_data).expect("Failed to read input binary");
 
-    if input_data.len() < 4 || &input_data[0..4] != b"\x7FELF" {
+    if  !validate_elf(&input_data) {
         eprintln!("Error: Input file is not a valid ELF binary");
         std::process::exit(1);
     }
@@ -120,4 +123,20 @@ fn main() {
     println!("Packed binary created at {}", output_path);
     println!("Original checksum: {}", hash_to_hex(&original_hash));
     println!("Final checksum: {}", hash_to_hex(&final_hash));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_elf_valid() {
+        assert!(validate_elf(b"\x7FELF\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00"));
+    }
+
+    #[test]
+    fn test_validate_elf_invalid() {
+        assert!(!validate_elf(b"Not an ELF file"));
+        assert!(!validate_elf(b"\x7FEL"));
+    }
 }
