@@ -1,5 +1,4 @@
 use blake3::Hasher;
-use std::convert::TryInto;
 
 /// Compute Blake3 hash of data
 pub fn compute_blake3(data: &[u8]) -> [u8; 32] {
@@ -98,4 +97,112 @@ pub fn hash_to_hex(hash: &[u8; 32]) -> String {
         .map(|b| format!("{:02x}", b))
         .collect::<Vec<String>>()
         .join("")
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_blake3() {
+        let empty_data = b"";
+        let empty_hash = [
+            0xaf, 0x13, 0x49, 0xb9, 0xf5, 0xf9, 0xa1, 0xa6,
+            0xa0, 0x40, 0x4d, 0xea, 0x36, 0xdc, 0xc9, 0x49,
+            0x9b, 0xcb, 0x25, 0xc9, 0xad, 0xc1, 0x12, 0xb7,
+            0xcc, 0x9a, 0x93, 0xca, 0xe4, 0x1f, 0x32, 0x62,
+        ];
+        assert_eq!(compute_blake3(empty_data), empty_hash);
+
+        let data = b"abc";
+        assert_eq!(compute_blake3(data).len(), 32);
+    }
+
+    #[test]
+    fn test_validate_blake3_match() {
+        let data = b"hello";
+        let hash = compute_blake3(data);
+        assert!(validate_blake3(data, &hash));
+    }
+
+    #[test]
+    fn test_validate_blake3_mismatch() {
+        let data = b"hello";
+        let wrong_hash = [0; 32];
+        assert!(!validate_blake3(data, &wrong_hash));
+    }
+
+    #[test]
+    fn test_integer_sequence_checksum() {
+        let values = [1, 2, 3];
+        let expected_bytes = &[1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0];
+        let expected_hash = compute_blake3(expected_bytes);
+        assert_eq!(integer_sequence_checksum(&values), expected_hash);
+        assert_eq!(compute_crt_checksum(&values), expected_hash);
+    }
+
+    #[test]
+    fn test_rolling_checksum_small_window() {
+        let data = b"abc";
+        let window_size = 2;
+        let checksums = rolling_checksum(data, window_size);
+        assert_eq!(checksums.len(), 2); // "ab", "bc"
+        assert_eq!(checksums[0], compute_blake3(b"ab"));
+        assert_eq!(checksums[1], compute_blake3(b"bc"));
+    }
+
+    #[test]
+    fn test_rolling_checksum_window_equal_data() {
+        let data = b"abc";
+        let window_size = 3;
+        let checksums = rolling_checksum(data, window_size);
+        assert_eq!(checksums.len(), 1);
+        assert_eq!(checksums[0], compute_blake3(data));
+    }
+
+    #[test]
+    fn test_rolling_checksum_window_larger_than_data() {
+        let data = b"abc";
+        let window_size = 5;
+        let checksums = rolling_checksum(data, window_size);
+        assert_eq!(checksums.len(), 1);
+        assert_eq!(checksums[0], compute_blake3(data));
+    }
+
+    #[test]
+    fn test_crt_roundtrip() {
+        let base = [2, 3, 5];
+        let x = 7;
+        let crt = goto_crt(x, &base);
+        assert_eq!(crt, vec![1, 1, 2]); // 7 % 2 = 1, 7 % 3 = 1, 7 % 5 = 2
+        let reconstructed = goback_crt(&crt, &base);
+        assert_eq!(reconstructed, x);
+    }
+
+    #[test]
+    fn test_crt_tampered() {
+        let base = [2, 3, 5];
+        let x = 7;
+        let mut crt = goto_crt(x, &base); // [1, 1, 2]
+        crt[0] = 0; // Tamper
+        let reconstructed = goback_crt(&crt, &base);
+        assert_ne!(reconstructed, x);
+    }
+
+    #[test]
+    fn test_verify_crt_operation_correct() {
+        let original = 7;
+        let base = [2, 3, 5];
+        let expected_crt = vec![1, 1, 2];
+        assert!(verify_crt_operation(original, &base, &expected_crt));
+    }
+
+    #[test]
+    fn test_verify_crt_operation_incorrect() {
+        let original = 7;
+        let base = [2, 3, 5];
+        let incorrect_crt = vec![0, 1, 2];
+        assert!(!verify_crt_operation(original, &base, &incorrect_crt));
+    }
 }
