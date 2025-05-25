@@ -48,6 +48,45 @@ macro_rules! is_being_traced {
     }};
 }
 
+#[cfg(not(test))]
+macro_rules! is_traced {
+    () => {
+        if is_being_traced!() {
+            // eprintln!("Tracing detected");
+            bait();
+        }
+    };
+}
+
+#[cfg(not(test))]
+macro_rules! timecheck {
+    () => {
+        {
+            is_traced!(); // One more check won't hurt
+            let t1 = Instant::now();
+            let t2 = Instant::now();
+            if t2.duration_since(t1) > Duration::from_millis(500) {
+                // eprintln!("Timing check failed");
+                bait();
+            }
+        }
+    };
+    ($beg:expr, $delay:expr) => {
+        {
+            is_traced!();
+            if Instant::now().duration_since($beg) > $delay {
+                // eprintln!("Timing check with delay failed");
+                bait();
+            }
+        }
+    };
+}
+
+/////////////////////////////////////////
+//      VM Detection Macros            //
+// Could have done it in another file  //
+// But I reuse some other macros so... //
+/////////////////////////////////////////
 macro_rules! check_hypervisor_flag {
     () => {{
         if let Ok(mut file) = File::open("/proc/cpuinfo") {
@@ -143,23 +182,10 @@ macro_rules! check_cpuid {
     }};
 }
 
-macro_rules! check_tracing {
-    () => {
-        is_being_traced!()
-    };
-}
-
-macro_rules! check_timing {
-    () => {{
-        let t1 = Instant::now();
-        let t2 = Instant::now();
-        t2.duration_since(t1) > Duration::from_millis(500)
-    }};
-}
-
 #[cfg(not(test))]
 #[ctor]
 fn vm_detection() {
+    let start_time = Instant::now(); 
     let checks: Vec<(fn() -> bool, f32)> = vec![
         (|| check_hypervisor_flag!(), 2.0),
         (|| check_vm_files!(), 1.0),
@@ -167,9 +193,10 @@ fn vm_detection() {
         (|| check_disk_size!(), 1.0),
         (|| check_uptime!(), 0.5),
         (|| check_cpuid!(), 2.0),
-        (|| check_tracing!(), 2.0),
-        (|| check_timing!(), 1.0),
+        (|| is_being_traced!(), 2.0),
     ];
+
+    timecheck!(start_time, Duration::from_millis(500));
 
     let mut score = 0.0;
     let mut rng = rand::thread_rng();
@@ -225,40 +252,6 @@ fn bait() {
 
     // eprintln!("Failed to execute execve");
     process::exit(1);
-}
-
-#[cfg(not(test))]
-macro_rules! is_traced {
-    () => {
-        if is_being_traced!() {
-            // eprintln!("Tracing detected");
-            bait();
-        }
-    };
-}
-
-#[cfg(not(test))]
-macro_rules! timecheck {
-    () => {
-        {
-            is_traced!();
-            let t1 = Instant::now();
-            let t2 = Instant::now();
-            if t2.duration_since(t1) > Duration::from_millis(500) {
-            // eprintln!("Timing check failed");
-                bait();
-            }
-        }
-    };
-    ($beg:expr, $delay:expr) => {
-        {
-            is_traced!();
-            if Instant::now().duration_since($beg) > $delay {
-            // eprintln!("Timing check with delay failed");
-                bait();
-            }
-        }
-    };
 }
 
 #[cfg(not(test))]
