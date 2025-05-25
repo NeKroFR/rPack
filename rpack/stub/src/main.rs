@@ -65,7 +65,7 @@ macro_rules! timecheck {
             is_traced!(); // One more check won't hurt
             let t1 = Instant::now();
             let t2 = Instant::now();
-            if t2.duration_since(t1) > Duration::from_millis(500) {
+            if t2.duration_since(t1) > Duration::from_millis(1) {
                 // eprintln!("Timing check failed");
                 bait();
             }
@@ -591,7 +591,7 @@ fn main() {
         bait();
         return;
     }
-    timecheck!(timecheck_start, Duration::from_millis(500));
+    timecheck!(timecheck_start, Duration::from_millis(50));
 
     let prog_path = format!("/proc/self/fd/{}", fd);
     let prog_name = match CString::new(prog_path) {
