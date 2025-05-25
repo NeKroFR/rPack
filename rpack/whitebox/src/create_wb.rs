@@ -128,17 +128,6 @@ fn goto_crt(x: i64, base: &[i64]) -> Vec<i64> {
     crt_values
 }
 
-fn goback_crt(x_b: &[i64], base: &[i64]) -> i64 {
-    let mut x = 0;
-    let b_prod: i64 = base.iter().product();
-    for i in 0..base.len() {
-        let b_i = b_prod / base[i];
-        let (_, mi, _) = xgcd(b_i, base[i]);
-        x = (x + (x_b[i] * b_i % b_prod).rem_euclid(b_prod) * mi % b_prod).rem_euclid(b_prod);
-    }
-    x.rem_euclid(b_prod)
-}
-
 fn xgcd(b: i64, n: i64) -> (i64, i64, i64) {
     let mut x0 = 1;
     let mut x1 = 0;
