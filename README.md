@@ -1,6 +1,6 @@
 # rPack
 
-rPack is an ELF packer written in Rust.
+This is the [website]() branch of rPack, an ELF packer written in Rust.
 
 ## Features
 

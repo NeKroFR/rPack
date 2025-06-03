@@ -1,3 +1,0 @@
-[workspace]
-members = ["rpack", "stub", "aes", "whitebox", "checksum"]
-resolver = "2"
