@@ -20,8 +20,8 @@ body {
 /* Main Content */
 .main-content {
   flex: 1;
-  padding-top: 100px;   /* pour éviter la navbar fixe */
-  padding-bottom: 60px; /* pour laisser de l'espace avant le footer */
+  padding-top: 100px;   /* to avoid the fixed navbar */
+  padding-bottom: 60px; /* to leave space before the footer */
 }
 
 /* Container */
@@ -76,7 +76,7 @@ body {
   background: linear-gradient(135deg, #6a11cb, #2575fc);
   padding: 100px 0;
   text-align: center;
-  margin-top: 70px; /* pour éviter de chevaucher la navbar fixe */
+  margin-top: 70px; /* to avoid overlapping the fixed navbar */
 }
 
 .upload .container {
@@ -180,4 +180,3 @@ footer {
   padding: 1.5rem 0;
   text-align: center;
 }
-

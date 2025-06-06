@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en"></html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -30,7 +30,7 @@
         <div id="feedback" class="feedback"></div>
         <button id="process-btn" disabled>Pack file</button>
         <div id="packed-file-section" class="packed-file-section" style="display:none;">
-          <h2>Download your packed file !</h2>
+          <h2>Download your packed file!</h2>
           <a id="download-link" href="#" download></a>
         </div>
       </div>
@@ -55,13 +55,13 @@
 
       let selectedFile = null;
 
-      console.log("DOM entièrement chargé");
+      console.log("DOM fully loaded");
 
-      // Affichage du fichier sélectionné
+      // Display the selected file
       function handleFile(file) {
-        console.log("Fichier reçu:", file);
+        console.log("File received:", file);
         selectedFile = file;
-        feedback.textContent = `Fichier sélectionné : ${file.name}`;
+        feedback.textContent = `Selected file: ${file.name}`;
         processBtn.disabled = false;
       }
 
@@ -75,14 +75,14 @@
         }
       });
 
-      // Empêche le comportement par défaut du drag & drop
+      // Prevent default drag & drop behavior
       ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, (e) => {
           e.preventDefault();
           e.stopPropagation();
         }, false);
       });
-      // Ajout/suppression de la classe highlight
+      // Add/remove highlight class
       ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => dropZone.classList.add('highlight'), false);
       });
@@ -98,7 +98,7 @@
 
       processBtn.addEventListener('click', () => {
         if(selectedFile) {
-          feedback.textContent = `Traitement en cours pour : ${selectedFile.name}`;
+          feedback.textContent = `Processing: ${selectedFile.name}`;
           processBtn.disabled = true;
           const formData = new FormData();
           formData.append('file', selectedFile);
@@ -109,23 +109,23 @@
           })
           .then(response => {
             if(!response.ok) {
-              throw new Error("Erreur lors du traitement, code: " + response.status);
+              throw new Error("Error during processing, code: " + response.status);
             }
             return response.blob();
           })
           .then(blob => {
-            console.log("Blob reçu:", blob);
+            console.log("Blob received:", blob);
             const url = URL.createObjectURL(blob);
             const newFileName = `${selectedFile.name}.packed`;
             downloadLink.href = url;
             downloadLink.download = newFileName;
             downloadLink.textContent = newFileName;
-            feedback.textContent = `Traitement terminé pour : ${selectedFile.name}`;
+            feedback.textContent = `Processing finished: ${selectedFile.name}`;
             packedSection.style.display = 'block';
           })
           .catch(error => {
             console.error(error);
-            feedback.textContent = `Erreur lors du traitement du fichier : ${error}`;
+            feedback.textContent = `Error processing file: ${error}`;
           });
         }
       });
@@ -133,4 +133,3 @@
   </script>
 </body>
 </html>
-
