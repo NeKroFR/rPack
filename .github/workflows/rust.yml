@@ -11,11 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
         run:
-            working-directory: ./rpack
+            working-directory: ./
     steps:
     - uses: actions/checkout@v4
-    - name: test cd
-      run: cd rpack
     - name: Build
       run: cargo build --verbose
     - name: Run tests
@@ -25,4 +23,4 @@ jobs:
       with:
         name: rpack
         path: |
-          rpack/target/debug/rpack
+          target/debug/rpack
