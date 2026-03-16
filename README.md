@@ -5,7 +5,7 @@ rPack is an ELF packer written in Rust.
 ## Features
 
 - **Compression**: Uses lz4 for efficient compression of the input binary.
-- **Encryption**: Encrypts the compressed binary with AES-128 ECB.
+- **Encryption**: Encrypts the compressed binary with AES-128 CBC.
 - **Whitebox Cryptography**: Encrypt the AES key using a lattice based whitebox ([BVWhiteBox](https://github.com/quarkslab/BVWhiteBox)).
 - **Anti-Debugging**: Uses multiple anti-debugging techniques such as `ptrace` or `prctl`
 - **Anti-VM**: Uses multiple method to detect if the binary is runned in a virtualized environment.
